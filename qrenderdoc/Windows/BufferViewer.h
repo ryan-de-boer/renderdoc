@@ -365,6 +365,8 @@ private:
 
   void UI_ConfigureFormats();
   void UI_ConfigureVertexPipeFormats();
+  void UI_ConfigureVertexPipeFormatsOLD();
+//  void PrintFirst5UVs(ICaptureContext &m_Ctx);
   void UI_ConfigureMeshPipeFormats();
 
   void UpdateCurrentMeshConfig();

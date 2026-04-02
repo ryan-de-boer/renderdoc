@@ -3169,6 +3169,10 @@ DOCUMENT(R"(What kind of visualisation to use when rendering a mesh.
 
   The mesh should be rendered with vertices displaced and coloured by vertex ID.
 
+.. data:: Textured
+
+  The mesh textured.
+
 .. data:: Meshlet
 
   The mesh should be rendered colorising each meshlet differently.
@@ -3181,6 +3185,7 @@ enum class Visualisation : uint32_t
   Lit,
   Secondary,
   Explode,
+  Textured,
   Meshlet,
   Count,
 };

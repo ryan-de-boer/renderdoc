@@ -31,6 +31,7 @@
 #include "vk_debug.h"
 #include "vk_replay.h"
 #include "vk_shader_cache.h"
+#include <iostream>
 
 #define VULKAN 1
 #include "data/glsl/glsl_ubos_cpp.h"
@@ -44,12 +45,15 @@ static int VisModeToMeshDisplayFormat(Visualisation vis, bool showAlpha)
     default: return (int)vis;
     case Visualisation::Secondary:
       return showAlpha ? MESHDISPLAY_SECONDARY_ALPHA : MESHDISPLAY_SECONDARY;
+    case Visualisation::Textured:           // ADD THIS
+      return MESHDISPLAY_TEXTURED;
   }
 }
 
 VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineLayout pipeLayout,
                                                                      const MeshFormat &primary,
-                                                                     const MeshFormat &secondary)
+                                                                     const MeshFormat &secondary,
+                                                                    uint32_t uvByteOffset = 0)
 {
   // generate a key to look up the map
   uint64_t key = 0;
@@ -145,6 +149,10 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
   }
   bit++;
 
+    // UV byte offset for textured mode (8 bits, supports offsets 0-255)
+  key |= uint64_t(uvByteOffset & 0xff) << bit;
+  bit += 8;
+
   // only 64 bits, make sure they all fit
   RDCASSERT(bit < 64);
 
@@ -163,9 +171,12 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
       // primary
       {0, primary.vertexByteStride,
        primary.instanced ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX},
-      // secondary
-      {1, secondary.vertexByteStride,
-       secondary.instanced ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX}};
+    // secondary
+    {1, secondary.vertexByteStride,
+     secondary.instanced ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX},
+    // UV (textured mode) - same stride as primary since it's in the same buffer
+//    {2, primary.vertexByteStride, VK_VERTEX_INPUT_RATE_VERTEX},
+};
 
   RDCASSERT(primaryFmt != VK_FORMAT_UNDEFINED);
 
@@ -184,6 +195,13 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
           primaryFmt,
           0,
       },
+// UV at location 2, binding 2, float2, offset 24 within the vertex
+//first for gun
+//{2, 0, VK_FORMAT_R32G32_SFLOAT, 24}, //_input2
+//second for wall
+//{2, 0, VK_FORMAT_R32G32_SFLOAT, 12}, //_input1
+{2, 0, VK_FORMAT_R32G32_SFLOAT, uvByteOffset}, //_inputN
+
   };
 
   if(primary.vertexByteOffset > primaryStridePadding)
@@ -199,7 +217,7 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
   }
 
   VkPipelineVertexInputStateCreateInfo vi = {
-      VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, NULL, 0, 1, binds, 2, vertAttrs,
+      VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, NULL, 0, 2, binds, 3, vertAttrs,
   };
 
   VkPipelineShaderStageCreateInfo stages[3] = {
@@ -550,11 +568,17 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &seco
   }
 
   // can't support secondary shading without a buffer - no pipeline will have been created
-  const Visualisation finalVisualisation = (cfg.visualisationMode == Visualisation::Secondary &&
+  Visualisation finalVisualisation = (cfg.visualisationMode == Visualisation::Secondary &&
                                             cfg.second.vertexResourceId == ResourceId())
                                                ? Visualisation::NoSolid
                                                : cfg.visualisationMode;
 
+  // if (finalVisualisation==Visualisation::Textured)
+  // {
+  //   finalVisualisation = Visualisation::Lit;
+  // }
+
+                                               
   MeshUBOData meshUniforms = {};
   meshUniforms.mvp = ModelViewProj;
   meshUniforms.displayFormat = MESHDISPLAY_SOLID;
@@ -685,7 +709,7 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &seco
   }
 
   VKMeshDisplayPipelines cache = GetDebugManager()->CacheMeshDisplayPipelines(
-      m_MeshRender.PipeLayout, cfg.position, cfg.second);
+      m_MeshRender.PipeLayout, cfg.position, cfg.second, cfg.uvByteOffset);
 
   if(cfg.position.vertexResourceId != ResourceId())
   {
@@ -703,7 +727,8 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &seco
     vt->CmdBindVertexBuffers(Unwrap(cmd), 0, 1, UnwrapPtr(vb), &offs);
   }
 
-  if(finalVisualisation == Visualisation::Secondary)
+  if(finalVisualisation == Visualisation::Secondary ||
+   finalVisualisation == Visualisation::Textured)
   {
     VkBuffer vb = m_pDriver->GetResourceManager()->GetHandle<VkBuffer>(cfg.second.vertexResourceId);
 
@@ -731,6 +756,7 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &seco
         break;
       case Visualisation::Lit:
       case Visualisation::Explode:
+      case Visualisation::Textured:
         pipe = cache.pipes[VKMeshDisplayPipelines::ePipe_Lit];
         // point list topologies don't have lighting obvious, just render them as solid
         // Also, can't support lit rendering without the pipeline - maybe geometry shader wasn't supported.
@@ -749,7 +775,7 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &seco
     if(!data)
       return;
 
-    if(finalVisualisation == Visualisation::Lit || finalVisualisation == Visualisation::Explode)
+    if(finalVisualisation == Visualisation::Lit || finalVisualisation == Visualisation::Textured || finalVisualisation == Visualisation::Explode)
       meshUniforms.invProj = projMat.Inverse();
 
     meshUniforms.color = Vec4f(0.8f, 0.8f, 0.0f, 1.0f);
@@ -791,9 +817,213 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &seco
 
     m_MeshRender.UBO.Unmap();
 
+//     if(finalVisualisation == Visualisation::Textured)
+// {
+//     if(!cfg.texDisplay.resourceId.IsNull())
+//     {
+//         // override the existing descriptor set with the mesh’s texture
+//         VkDescriptorSet descSet = m_MeshRender.DescSet[2]; // textures slot
+//         VkDescriptorImageInfo imageInfo = {};
+//         imageInfo.imageView = Unwrap(cfg.texDisplay.ImageView);
+//         imageInfo.sampler   = Unwrap(cfg.texDisplay.Sampler);
+//         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+//         VkWriteDescriptorSet write = {};
+//         write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+//         write.dstSet = descSet;
+//         write.dstBinding = 0;  // first binding in textures set
+//         write.dstArrayElement = 0;
+//         write.descriptorCount = 1;
+//         write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+//         write.pImageInfo = &imageInfo;
+
+//         vt->UpdateDescriptorSets(Unwrap(m_pDevice), 1, &write, 0, nullptr);
+//     }
+// }
+
+
+// // -------------------------------------------------------------
+// // Textured mode: use TEXCOORD0 as UV source
+// // -------------------------------------------------------------
+// if(cfg.visualisationMode == Visualisation::Textured)
+// {
+//   const MeshFormat &fmt = cfg.position;
+
+//   // search vertex attributes for TEXCOORD semantic
+//   for(const MeshAttribute &attr : cfg.attributes)
+//   {
+//     if(attr.semantic == ShaderBuiltin::Texcoord)
+//     {
+//       cfg.second.vertexResourceId = attr.vertexResourceId;
+//       cfg.second.offset = attr.byteOffset;
+//       cfg.second.stride = attr.byteStride;
+
+//       cfg.second.compType = attr.compType;
+//       cfg.second.compCount = attr.compCount;
+//       cfg.second.format = attr.format;
+
+//       cfg.second.vertexByteSize = attr.byteStride;
+
+//       break;
+//     }
+//   }
+// }
+
+if(finalVisualisation == Visualisation::Textured)
+{
+    RDCLOG("textureId=%s hasResource=%d", ToStr(cfg.textureId).c_str(),
+           m_pDriver->GetResourceManager()->HasResource(cfg.textureId));
+    RDCLOG("second.vertexResourceId=%s", ToStr(cfg.second.vertexResourceId).c_str());
+}
+
+    // For Textured mode, write the chosen texture into the descriptor set
+    if(finalVisualisation == Visualisation::Textured &&
+       cfg.textureId != ResourceId() &&
+       m_pDriver->GetResourceManager()->HasResource(cfg.textureId))
+    {
+//          RDCLOG("Textured mode hit, skipping descriptor write for now");
+//                  std::cout << "Textured mode hit, skipping descriptor write for now" << std::endl;
+
+
+      // Get the live VkImage from the resource ID
+VkImage liveImage = m_pDriver->GetResourceManager()->GetHandle<VkImage>(cfg.textureId);
+const VulkanCreationInfo::Image &imInfo =
+    m_pDriver->m_CreationInfo.m_Image[cfg.textureId];
+
+      VkImageViewCreateInfo viewInfo = {};
+      viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+      viewInfo.image = Unwrap(liveImage);
+      viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+      viewInfo.format = imInfo.format;
+      viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+      viewInfo.subresourceRange.baseMipLevel = 0;
+      viewInfo.subresourceRange.levelCount = 1;
+      viewInfo.subresourceRange.baseArrayLayer = 0;
+      viewInfo.subresourceRange.layerCount = 1;
+
+      VkImageView texView = VK_NULL_HANDLE;
+      vt->CreateImageView(Unwrap(dev), &viewInfo, NULL, &texView);
+RDCASSERTMSG("Failed to create mesh texture view", texView != VK_NULL_HANDLE, texView);
+RDCLOG("texView=%p liveImage=%p format=%d", (void*)texView, (void*)Unwrap(liveImage), viewInfo.format);
+
+      VkDescriptorImageInfo imageInfo = {};
+      imageInfo.imageView = texView;
+
+      //find sampler
+//      imageInfo.sampler   = Unwrap(m_General.PointSampler);  // use existing sampler
+//      imageInfo.sampler   = Unwrap(m_TexRender.LinearSampler);
+      imageInfo.sampler   = Unwrap(m_MeshRender.LinearRepeatSampler);
+
+      imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;//VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+      VkWriteDescriptorSet write = {};
+      write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+      write.dstSet = Unwrap(m_MeshRender.DescSet);
+      write.dstBinding = 2;    // use a free binding slot - check your descriptor set layout
+      write.dstArrayElement = 0;
+      write.descriptorCount = 1;
+      write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+      write.pImageInfo = &imageInfo;
+
+      vt->UpdateDescriptorSets(Unwrap(dev), 1, &write, 0, NULL);
+
+      // clean up the transient view after the update (the descriptor holds a reference)
+      vt->DestroyImageView(Unwrap(dev), texView, NULL);
+    }
+
+
+    //random texture mode or grey mode when wrong
+// if(finalVisualisation == Visualisation::Textured)
+// {
+//     // Fill a temp buffer with random UVs to test binding slot 2
+//     uint32_t numVerts = cfg.position.numIndices;
+//     VkDeviceSize bufSize = sizeof(Vec2f) * numVerts;
+
+//     VkDeviceSize vboffs = 0;
+//     Vec2f *uvptr = (Vec2f *)m_MeshRender.BBoxVB.Map(vboffs, bufSize);
+//     if(uvptr)
+//     {
+//         for(uint32_t i = 0; i < numVerts; i++)
+//         {
+//             uvptr[i].x = (float)(i % 7) / 7.0f;   // pseudo-random 0-1
+//             uvptr[i].y = (float)(i % 13) / 13.0f;
+
+// //        uvptr[i].x = 0.64797f;
+// //        uvptr[i].y = 0.39980000000000004f;
+// //        uvptr[i].x = 0.5;
+// //        uvptr[i].y = 0.5;
+
+ 
+//         }
+//         m_MeshRender.BBoxVB.Unmap();
+//         vt->CmdBindVertexBuffers(Unwrap(cmd), 2, 1,
+//                                  &m_MeshRender.BBoxVB.UnwrappedBuffer(), &vboffs);
+//     }
+// }
+
+
+// if(finalVisualisation == Visualisation::Textured)
+// {
+//     uint32_t numVerts = cfg.position.numIndices;
+    
+//     // Read real UV data from the vertex buffer
+//     // bytebuf rawData = GetDebugManager()->GetBufferData(cfg.second.vertexResourceId, 
+//     //                                             cfg.second.vertexByteOffset,
+//     //                                             cfg.second.vertexByteStride * numVerts);
+
+
+//         bytebuf rawData;
+//         GetDebugManager()->GetBufferData(cfg.second.vertexResourceId, 
+//                                                 cfg.second.vertexByteOffset,
+//                                                 cfg.second.vertexByteStride * numVerts,
+//                                               rawData);
+
+//     VkDeviceSize vboffs = 0;
+//     Vec2f *uvptr = (Vec2f *)m_MeshRender.BBoxVB.Map(vboffs, sizeof(Vec2f) * numVerts);
+//     if(uvptr && !rawData.empty())
+//     {
+//         for(uint32_t i = 0; i < numVerts; i++)
+//         {
+//             const byte *src = rawData.data() + i * cfg.second.vertexByteStride;
+//             const float *uv = (const float *)src;
+//             uvptr[i].x = uv[0];
+//             uvptr[i].y = uv[1];
+//         }
+//         m_MeshRender.BBoxVB.Unmap();
+//         vt->CmdBindVertexBuffers(Unwrap(cmd), 2, 1,
+//                                  &m_MeshRender.BBoxVB.UnwrappedBuffer(), &vboffs);
+//     }
+// }
+
+// if(finalVisualisation == Visualisation::Textured &&
+//    cfg.second.vertexResourceId != ResourceId())
+// {
+//     VkBuffer uvVb = m_pDriver->GetResourceManager()->GetHandle<VkBuffer>(cfg.second.vertexResourceId);
+//     VkDeviceSize uvOffs = cfg.second.vertexByteOffset;
+//     vt->CmdBindVertexBuffers(Unwrap(cmd), 2, 1, UnwrapPtr(uvVb), &uvOffs);
+// }
+
+
     vt->CmdBindDescriptorSets(Unwrap(cmd), VK_PIPELINE_BIND_POINT_GRAPHICS,
                               Unwrap(m_MeshRender.PipeLayout), 0, 1,
                               UnwrapPtr(m_MeshRender.DescSet), 2, dynOffs);
+
+if(finalVisualisation == Visualisation::Textured)
+{
+    // // make sure your mesh has a texture bound
+    // if(!cfg.texDisplay.resourceId.IsNull())
+    // {
+    //           VkPipelineLayout pp = cache.pipes[VKMeshDisplayPipelines::ePipe_Lit].layout;
+
+    //     // bind the texture to the Lit pipeline descriptor set
+    //     vt->CmdBindDescriptorSets(Unwrap(cmd),
+    //                             VK_PIPELINE_BIND_POINT_GRAPHICS,
+    //                             pp,
+    //                             0, 1,
+    //                             &cfg.texDisplay.descriptorSet,
+    //                             0, nullptr);
+    // }
+}
 
     vt->CmdBindPipeline(Unwrap(cmd), VK_PIPELINE_BIND_POINT_GRAPHICS, Unwrap(pipe));
 

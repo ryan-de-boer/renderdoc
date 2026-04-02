@@ -102,9 +102,11 @@ void vtxExploder(in int vtxID, inout vec3 pos, inout vec3 secondary)
 
 IO_LOCATION(0) in POSITION_TYPE vsin_position;
 IO_LOCATION(1) in SECONDARY_TYPE vsin_secondary;
+IO_LOCATION(2) in vec2 vsin_uv_binding;
 
 IO_LOCATION(0) out vec4 vsout_secondary;
 IO_LOCATION(1) out vec4 vsout_norm;
+IO_LOCATION(2) out vec2 vsout_uv_binding;
 
 #ifdef VULKAN
 
@@ -191,12 +193,19 @@ void main(void)
 
   gl_Position = Mesh.mvp * pos;
   gl_Position.xy += Mesh.pointSpriteSize.xy * 0.01f * psprite[VERTEX_ID % 4] * gl_Position.w;
-  vsout_secondary = vec4(secondary);
+  vsout_secondary = vec4(secondary);  
   vsout_norm = vec4(0, 0, 1, 1);
+  vsout_uv_binding = vsin_uv_binding;
+//  vsout_uv_binding = vsin_secondary.xy;
 
 #ifdef VULKAN
   if(Mesh.displayFormat == MESHDISPLAY_MESHLET)
     vsout_secondary = getMeshletColor();
+
+
+//vsout_secondary = secondary;
+//vsout_secondary = vec4(vsin_secondary.xy, 0.0, 1.0);
+//vsout_secondary = vec4(0.5,0.5, 0.0, 1.0);
 
   // GL->VK conventions
   gl_Position.y = -gl_Position.y;

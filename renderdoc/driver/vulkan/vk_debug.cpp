@@ -3870,6 +3870,31 @@ void VulkanReplay::CreateResources()
 
   RenderDoc::Inst().SetProgress(LoadProgress::DebugManagerInit, 0.6f);
 
+  // Write a dummy texture into mesh render descriptor set binding 2
+  // so it's valid even when not in Textured visualisation mode
+  {
+    VkDevice dev = m_pDriver->GetDev();
+    const VkDevDispatchTable *vt = ObjDisp(dev);
+
+    VkDescriptorImageInfo dummyImageInfo = {};
+    dummyImageInfo.sampler     = Unwrap(m_TexRender.DummySampler);
+    dummyImageInfo.imageView   = Unwrap(m_TexRender.DummyImageViews[0][1]);  // float 2D
+    dummyImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    VkWriteDescriptorSet write = {};
+    write.sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write.dstSet           = Unwrap(m_MeshRender.DescSet);
+    write.dstBinding       = 2;
+    write.dstArrayElement  = 0;
+    write.descriptorCount  = 1;
+    write.descriptorType   = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    write.pImageInfo       = &dummyImageInfo;
+
+    vt->UpdateDescriptorSets(Unwrap(dev), 1, &write, 0, NULL);
+  }
+
+
+
   m_VertexPick.Init(m_pDriver, m_General.DescriptorPool);
 
   RenderDoc::Inst().SetProgress(LoadProgress::DebugManagerInit, 0.7f);
@@ -5086,10 +5111,21 @@ void VulkanReplay::MeshRendering::Init(WrappedVulkan *driver, VkDescriptorPool d
       {
           {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1, VK_SHADER_STAGE_ALL, NULL},
           {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1, VK_SHADER_STAGE_VERTEX_BIT, NULL},
+          {2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, NULL},
       });
 
   CREATE_OBJECT(PipeLayout, DescSetLayout, 0);
   CREATE_OBJECT(DescSet, descriptorPool, DescSetLayout);
+
+  // Create linear repeat sampler for textured mode
+VkSamplerCreateInfo sampInfo = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+sampInfo.minFilter = sampInfo.magFilter = VK_FILTER_LINEAR;
+sampInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+sampInfo.addressModeU = sampInfo.addressModeV = sampInfo.addressModeW =
+    VK_SAMPLER_ADDRESS_MODE_REPEAT;
+sampInfo.maxLod = 128.0f;
+driver->vkCreateSampler(driver->GetDev(), &sampInfo, NULL, &LinearRepeatSampler);
+
 
   UBO.Create(driver, driver->GetDev(), sizeof(MeshUBOData), 16, 0);
   MeshletSSBO.Create(driver, driver->GetDev(), sizeof(uint32_t) * (4 + MAX_NUM_MESHLETS), 16,
@@ -5165,11 +5201,18 @@ void VulkanReplay::MeshRendering::Init(WrappedVulkan *driver, VkDescriptorPool d
   UBO.FillDescriptor(meshubo);
   MeshletSSBO.FillDescriptor(meshssbo);
 
+  // VkDescriptorImageInfo dummyImageInfo = {};
+  // dummyImageInfo.sampler   = Unwrap(m_TexRender.DummySampler);
+  // dummyImageInfo.imageView = Unwrap(m_TexRender.DummyImageViews[0][1]);  // float 2D
+  // dummyImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
   VkWriteDescriptorSet writes[] = {
       {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, Unwrap(DescSet), 0, 0, 1,
        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, NULL, &meshubo, NULL},
       {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, Unwrap(DescSet), 1, 0, 1,
        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, NULL, &meshssbo, NULL},
+//     {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, Unwrap(DescSet), 2, 0, 1,
+//       VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &dummyImageInfo, NULL, NULL},
   };
 
   VkDevice dev = driver->GetDev();
@@ -5186,6 +5229,10 @@ void VulkanReplay::MeshRendering::Destroy(WrappedVulkan *driver)
   BBoxVB.Destroy();
   MeshletSSBO.Destroy();
   AxisFrustumVB.Destroy();
+
+  driver->vkDestroySampler(driver->GetDev(), LinearRepeatSampler, NULL);
+LinearRepeatSampler = VK_NULL_HANDLE;
+
 
   driver->vkDestroyDescriptorSetLayout(driver->GetDev(), DescSetLayout, NULL);
   driver->vkDestroyPipelineLayout(driver->GetDev(), PipeLayout, NULL);

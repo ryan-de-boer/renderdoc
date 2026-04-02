@@ -181,6 +181,7 @@ vec3 CalcCubeCoord(vec2 uv, int face)
 
 // extra values below
 #define MESHDISPLAY_SECONDARY_ALPHA 0x6
+#define MESHDISPLAY_TEXTURED 0x7
 
 #define MAX_NUM_MESHLETS (512 * 1024)
 

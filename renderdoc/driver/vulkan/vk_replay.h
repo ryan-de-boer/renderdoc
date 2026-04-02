@@ -776,6 +776,7 @@ private:
     VkDescriptorSetLayout DescSetLayout = VK_NULL_HANDLE;
     VkPipelineLayout PipeLayout = VK_NULL_HANDLE;
     VkDescriptorSet DescSet = VK_NULL_HANDLE;
+    VkSampler LinearRepeatSampler = VK_NULL_HANDLE;
   } m_MeshRender;
 
   struct VertexPicking

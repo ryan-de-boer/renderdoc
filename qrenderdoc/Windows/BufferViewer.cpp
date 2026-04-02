@@ -45,6 +45,62 @@
 #include "Windows/Dialogs/AxisMappingDialog.h"
 #include "Windows/Dialogs/CameraControlsDialog.h"
 #include "ui_BufferViewer.h"
+#include <iostream>
+
+// Assumes m_Ctx is your ICaptureContext
+// m_Config.second points to the UV attribute (_input2)
+
+#include <iostream>
+#include <cstdint>
+//#include "../../renderdoc/replay/renderdoc_replay.h"  // for ReplayCreateReplayDevice
+//#include "../../qrenderdoc/Windows/BufferViewer.h"    // for BoundVBuffer, rdcarray
+#include "/home/ryan-de-boer/renderdoc_src/renderdoc/renderdoc/api/replay/data_types.h"
+
+// void BufferViewer::PrintFirst5UVs(ICaptureContext &m_Ctx)
+// {
+//     const PipeState &pipe = m_Ctx.CurPipelineState();
+
+//     // Make local copy of VBuffers to avoid dangling reference
+//     const rdcarray<BoundVBuffer> vbs = pipe.GetVBuffers();
+
+//     int vbIdx = (int)m_Config.second.vertexResourceId;
+//     if(vbIdx < 0 || vbIdx >= (int)vbs.count())
+//     {
+//         std::cerr << "Invalid vertex buffer index!" << std::endl;
+//         return;
+//     }
+
+//     const BoundVBuffer &vb = vbs[vbIdx];
+
+//     // Get the BufferDescription
+//     BufferDescription *bufDesc = m_Ctx.GetBuffer(vb.resourceId);
+//     if(!bufDesc)
+//     {
+//         std::cerr << "Failed to get BufferDescription" << std::endl;
+//         return;
+//     }
+
+//     // Copy GPU buffer to CPU
+//     rdcarray<byte> bufData(bufDesc->length);
+//     memcpy(bufData.data(), bufDesc->data, bufDesc->length);  // Linux: bufDesc->data points to mapped data
+
+//     size_t stride = m_Config.second.vertexByteStride;
+//     size_t offset = m_Config.second.vertexByteOffset;
+
+//     std::cout << "=== First 5 UVs from _input2 ===" << std::endl;
+
+//     for(size_t i = 0; i < 5; ++i)
+//     {
+//         size_t idx = i * stride + offset;
+//         if(idx + 8 > bufData.size()) break;
+
+//         float u = *(float*)(bufData.data() + idx);
+//         float v = *(float*)(bufData.data() + idx + 4);
+
+//         std::cout << "Vertex " << i << ": U=" << u << " V=" << v << std::endl;
+//     }
+// }
+
 
 struct FixedVarTag
 {
@@ -748,6 +804,7 @@ struct BufferConfiguration
            QString(el.name).compare(lit("TEX"), Qt::CaseInsensitive) == 0 ||
            QString(el.name).compare(lit("TEX0"), Qt::CaseInsensitive) == 0 ||
            QString(el.name).compare(lit("UV"), Qt::CaseInsensitive) == 0 ||
+           QString(el.name).compare(lit("_input2"), Qt::CaseInsensitive) == 0 ||
            QString(el.name).compare(lit("UV0"), Qt::CaseInsensitive) == 0)
         {
           secondEl = i;
@@ -2606,7 +2663,7 @@ BufferViewer::BufferViewer(ICaptureContext &ctx, bool meshview, QWidget *parent)
 
   ui->visualisation->clear();
   ui->visualisation->addItems(
-      {tr("None"), tr("Solid Colour"), tr("Flat Shaded"), tr("Secondary"), tr("Exploded")});
+      {tr("None"), tr("Solid Colour"), tr("Flat Shaded"), tr("Secondary"), tr("Exploded"), tr("Textured")});
   ui->visualisation->adjustSize();
   ui->visualisation->setCurrentIndex(0);
 
@@ -4648,15 +4705,109 @@ void BufferViewer::UI_ConfigureFormats()
     UI_ConfigureVertexPipeFormats();
 }
 
+// //broken
+// void BufferViewer::UI_ConfigureVertexPipeFormatsOLD()
+// {
+//     const PipeState &pipe = m_Ctx.CurPipelineState();
+//     const ActionDescription *action = m_Ctx.CurAction();
+//     rdcarray<BoundVBuffer> vbs = pipe.GetVBuffers();
+
+//     // Reset
+//     m_InPosition = MeshFormat();
+//     m_InSecondary = MeshFormat();
+//     m_Out1Position = MeshFormat();
+//     m_Out1Secondary = MeshFormat();
+//     m_Out2Position = MeshFormat();
+//     m_Out2Secondary = MeshFormat();
+
+//     if(!action)
+//         return;
+
+//     const BufferConfiguration &vsinConfig = m_ModelIn->getConfig();
+
+//     // -------------------------------
+//     // INPUT: Position
+//     // -------------------------------
+//     int posIdx = m_ModelIn->posColumn();
+//     if(posIdx < 0 || posIdx >= vsinConfig.props.count())
+//         posIdx = 0;
+
+//     const BufferElementProperties &posProp = vsinConfig.props[posIdx];
+
+//     if(posProp.buffer >= 0 && posProp.buffer < vbs.count())
+//     {
+//         const BoundVBuffer &vb = vbs[posProp.buffer];
+//         m_InPosition.vertexResourceId = vb.resourceId;
+//         m_InPosition.vertexByteStride = vb.byteStride;
+//         m_InPosition.vertexByteOffset = vb.byteOffset + action->vertexOffset * vb.byteStride;
+//         m_InPosition.vertexByteSize = vb.byteSize;
+//         m_InPosition.format = posProp.format;
+//         m_InPosition.instanced = posProp.perinstance;
+//         m_InPosition.instStepRate = posProp.instancerate;
+//     }
+
+//     // -------------------------------
+//     // INPUT: UV / secondary
+//     // -------------------------------
+//     int uvIdx = 2; // usually _input2
+//     if(uvIdx >= 0 && uvIdx < vsinConfig.props.count())
+//     {
+//         const BufferElementProperties &uvProp = vsinConfig.props[uvIdx];
+
+//         if(uvProp.buffer >= 0 && uvProp.buffer < vbs.count())
+//         {
+//             const BoundVBuffer &vb = vbs[uvProp.buffer];
+//             m_InSecondary.vertexResourceId = vb.resourceId;
+//             m_InSecondary.vertexByteStride = vb.byteStride;
+//             m_InSecondary.vertexByteOffset = vb.byteOffset + action->vertexOffset * vb.byteStride;
+//             m_InSecondary.vertexByteSize = vb.byteSize;
+//             m_InSecondary.format = uvProp.format;
+//             m_InSecondary.instanced = uvProp.perinstance;
+//             m_InSecondary.instStepRate = uvProp.instancerate;
+//         }
+//     }
+
+//     // -------------------------------
+//     // OUTPUTS (Out1 / Out2)
+//     // -------------------------------
+//     auto SetupOutput = [&](MeshFormat &outPos, MeshFormat &outUV,
+//                            const BufferConfiguration &cfg, const MeshFormat &src)
+//     {
+//         if(cfg.props.empty()) return;
+
+//         int posIdx = m_ModelOut1->posColumn();
+//         if(posIdx < 0 || posIdx >= cfg.props.count())
+//             posIdx = 0;
+
+//         int uvIdx = 2;
+//         if(uvIdx >= cfg.props.count()) uvIdx = 0;
+
+//         outPos = src;
+//         outUV = src;
+
+//         outPos.format = cfg.props[posIdx].format;
+//         outUV.format = cfg.props[uvIdx].format;
+//     };
+
+//     SetupOutput(m_Out1Position, m_Out1Secondary, m_ModelOut1->getConfig(), m_InPosition);
+//     SetupOutput(m_Out2Position, m_Out2Secondary, m_ModelOut2->getConfig(), m_InPosition);
+// }
+
 void BufferViewer::UI_ConfigureVertexPipeFormats()
 {
+          std::cout << "bufferview_A" << std::endl;
+
+
   const PipeState &pipe = m_Ctx.CurPipelineState();
 
   rdcarray<BoundVBuffer> vbs = pipe.GetVBuffers();
   const ActionDescription *action = m_Ctx.CurAction();
 
+          std::cout << "bufferview_B" << std::endl;
   if(action)
   {
+              std::cout << "bufferview_A0" << std::endl;
+
     m_InPosition = MeshFormat();
     m_InSecondary = MeshFormat();
 
@@ -4667,6 +4818,11 @@ void BufferViewer::UI_ConfigureVertexPipeFormats()
 
     if(!vsinConfig.columns.empty())
     {
+                std::cout << "bufferview_A1" << std::endl;
+
+    //            m_ModelIn->setSecondaryColumn(2, true, false);
+   // force _input2 as UV
+
       int elIdx = m_ModelIn->posColumn();
       if(elIdx < 0 || elIdx >= vsinConfig.columns.count())
         elIdx = 0;
@@ -4721,6 +4877,7 @@ void BufferViewer::UI_ConfigureVertexPipeFormats()
 
         m_InPosition.format = prop.format;
       }
+          std::cout << "bufferview_C" << std::endl;
 
       elIdx = m_ModelIn->secondaryColumn();
 
@@ -4748,7 +4905,72 @@ void BufferViewer::UI_ConfigureVertexPipeFormats()
         }
 
         m_InSecondary.format = prop.format;
+
+        m_InSecondary.format.compCount = 2;
+        m_InSecondary.format.compType = CompType::Float;
+
         m_InSecondary.showAlpha = m_ModelIn->secondaryAlpha();
+      }
+    }
+
+        std::cout << "bufferview1" << std::endl;
+
+        // For Textured mode, force secondary to TEXCOORD attribute for UV sampling
+//if(m_Config.visualisationMode == Visualisation::Textured)
+{
+//  int texcoordIdx = -1;
+  int texcoordIdx = 2;// _input2 is the UV stream
+        std::cout << "3looking at " << texcoordIdx << std::endl;
+
+  // Pass 1: look for TexCoord semantic
+  // for(int i = 0; i < vsinConfig.columns.count(); i++)
+  // {
+  //   if(vsinConfig.props[i].systemValue == ShaderBuiltin::TexCoord)
+  //   {
+  //     texcoordIdx = i;
+  //     break;
+  //   }
+  // }
+
+  // Pass 2: fall back to first float2 that isn't position
+  if(texcoordIdx == -1)
+  {
+    int posIdx = m_ModelIn->posColumn();
+    for(int i = 0; i < vsinConfig.columns.count(); i++)
+    {
+      if(i == posIdx)
+        continue;
+      const ResourceFormat &fmt = vsinConfig.props[i].format;
+      if(fmt.compCount == 2 && fmt.compType == CompType::Float)
+      {
+        texcoordIdx = i;
+        break;
+      }
+    }
+  }
+
+      if(texcoordIdx >= 0 && texcoordIdx < vsinConfig.columns.count())
+      {
+        const ShaderConstant &el = vsinConfig.columns[texcoordIdx];
+        const BufferElementProperties &prop = vsinConfig.props[texcoordIdx];
+
+        std::cout << "looking at " << texcoordIdx << std::endl;
+
+        m_InSecondary = MeshFormat();
+        m_InSecondary.instanced = prop.perinstance;
+        m_InSecondary.instStepRate = prop.instancerate;
+
+        if(prop.buffer < vbs.count() && !vsinConfig.genericsEnabled[texcoordIdx])
+        {
+          m_InSecondary.vertexResourceId = vbs[prop.buffer].resourceId;
+          m_InSecondary.vertexByteStride = vbs[prop.buffer].byteStride;
+          m_InSecondary.vertexByteOffset = vbs[prop.buffer].byteOffset + el.byteOffset +
+                                           action->vertexOffset * m_InSecondary.vertexByteStride;
+          m_InSecondary.vertexByteSize = vbs[prop.buffer].byteSize;
+        }
+        m_InSecondary.format = prop.format;
+        m_InSecondary.format.compCount = 2;
+        m_InSecondary.format.compType = CompType::Float;
       }
     }
 
@@ -4787,6 +5009,50 @@ void BufferViewer::UI_ConfigureVertexPipeFormats()
       }
     }
 
+          std::cout << "bufferview2" << std::endl;
+//if(m_Config.visualisationMode == Visualisation::Textured)
+{
+//  int texcoordIdx = -1;
+  int texcoordIdx = 2; // _input2 is the UV stream
+      std::cout << "4looking at " << texcoordIdx << std::endl;
+
+  // // Pass 1: look for TexCoord semantic
+  // for(int i = 0; i < out1Config.columns.count(); i++)
+  // {
+  //   if(out1Config.props[i].systemValue == ShaderBuiltin::TexCoord)
+  //   {
+  //     texcoordIdx = i;
+  //     break;
+  //   }
+  // }
+
+  // Pass 2: fall back to first float2 that isn't position
+  if(texcoordIdx == -1)
+  {
+    int posIdx = m_ModelOut1->posColumn();
+    for(int i = 0; i < out1Config.columns.count(); i++)
+    {
+      if(i == posIdx)
+        continue;
+      const ResourceFormat &fmt = out1Config.props[i].format;
+      if(fmt.compCount == 2 && fmt.compType == CompType::Float)
+      {
+        texcoordIdx = i;
+        break;
+      }
+    }
+  }
+
+  if(texcoordIdx >= 0)
+  {
+            std::cout << "2looking at " << texcoordIdx << std::endl;
+
+    m_Out1Secondary = m_Out1Data;
+    m_Out1Secondary.vertexByteOffset += out1Config.columns[texcoordIdx].byteOffset;
+    m_Out1Secondary.format = out1Config.props[texcoordIdx].format;
+  }
+}
+
     m_Out1Position.allowRestart = m_InPosition.allowRestart;
     m_Out1Position.restartIndex = m_InPosition.restartIndex;
 
@@ -4824,6 +5090,435 @@ void BufferViewer::UI_ConfigureVertexPipeFormats()
 
     if(!(action->flags & ActionFlags::Indexed))
       m_Out1Position.indexByteStride = m_InPosition.indexByteStride = 0;
+
+
+
+//gpt
+// After you set up m_Out1Position / m_Out1Secondary
+//const BufferConfiguration &out1Config = m_ModelOut1->getConfig();
+
+// PRIMARY = position output (keep as is)
+int posIdx = m_ModelOut1->posColumn();
+
+// SECONDARY = TEXCOORD
+int texcoordIdx = -1;
+
+// Pass 1: find TEXCOORD semantic in VS output
+for(int i = 0; i < out1Config.columns.count(); i++)
+{
+    if(i == posIdx) continue;
+
+    // look for float2 TEXCOORD
+    const ResourceFormat &fmt = out1Config.props[i].format;
+    if(fmt.compCount == 2 && fmt.compType == CompType::Float)
+    {
+        texcoordIdx = i;
+        break;
+    }
+}
+
+// fallback if not found
+if(texcoordIdx < 0)
+{
+    // take first float2 that isn't position
+    for(int i = 0; i < out1Config.columns.count(); i++)
+    {
+        if(i == posIdx) continue;
+        const ResourceFormat &fmt = out1Config.props[i].format;
+        if(fmt.compCount == 2 && fmt.compType == CompType::Float)
+        {
+            texcoordIdx = i;
+            break;
+        }
+    }
+}
+
+// assign SECONDARY_NAME properly
+if(texcoordIdx >= 0 && texcoordIdx < out1Config.columns.count())
+{
+    const BufferElementProperties &prop = out1Config.props[texcoordIdx];
+
+    m_Out1Secondary = m_Out1Data; // VS output buffer
+    m_Out1Secondary.vertexByteOffset += out1Config.columns[texcoordIdx].byteOffset;
+    m_Out1Secondary.vertexByteStride = vbs[prop.buffer].byteStride;  // <--- use buffer stride
+    m_Out1Secondary.vertexResourceId = vbs[prop.buffer].resourceId;
+    m_Out1Secondary.format = prop.format;
+    m_Out1Secondary.instanced = prop.perinstance;
+    m_Out1Secondary.instStepRate = prop.instancerate;
+}
+//gpt
+
+  }
+  else
+  {
+    m_InPosition = MeshFormat();
+    m_InSecondary = MeshFormat();
+
+    m_Out1Position = MeshFormat();
+    m_Out1Secondary = MeshFormat();
+
+    m_Out2Position = MeshFormat();
+    m_Out2Secondary = MeshFormat();
+  }
+}
+
+
+void BufferViewer::UI_ConfigureVertexPipeFormatsOLD()
+{
+          std::cout << "bufferview_A" << std::endl;
+
+
+  const PipeState &pipe = m_Ctx.CurPipelineState();
+
+  rdcarray<BoundVBuffer> vbs = pipe.GetVBuffers();
+  const ActionDescription *action = m_Ctx.CurAction();
+
+          std::cout << "bufferview_B" << std::endl;
+  if(action)
+  {
+              std::cout << "bufferview_A0" << std::endl;
+
+    m_InPosition = MeshFormat();
+    m_InSecondary = MeshFormat();
+
+    m_InPosition.allowRestart = pipe.IsRestartEnabled() && (action->flags & ActionFlags::Indexed);
+    m_InPosition.restartIndex = pipe.GetRestartIndex();
+
+    const BufferConfiguration &vsinConfig = m_ModelIn->getConfig();
+
+    if(!vsinConfig.columns.empty())
+    {
+                std::cout << "bufferview_A1" << std::endl;
+
+    //            m_ModelIn->setSecondaryColumn(2, true, false);
+   // force _input2 as UV
+
+      int elIdx = m_ModelIn->posColumn();
+      if(elIdx < 0 || elIdx >= vsinConfig.columns.count())
+        elIdx = 0;
+
+      if(vsinConfig.unclampedNumRows > 0)
+        m_InPosition.numIndices = vsinConfig.numRows;
+      else
+        m_InPosition.numIndices = action->numIndices;
+
+      if((action->flags & ActionFlags::Instanced) && action->numInstances == 0)
+        m_InPosition.numIndices = 0;
+
+      BoundVBuffer ib = pipe.GetIBuffer();
+      m_InPosition.topology = pipe.GetPrimitiveTopology();
+      m_InPosition.indexByteStride = ib.byteStride;
+      m_InPosition.baseVertex = action->baseVertex;
+      m_InPosition.indexResourceId = ib.resourceId;
+
+      uint32_t drawIdxByteOffs = action->indexOffset * ib.byteStride;
+      m_InPosition.indexByteOffset = ib.byteOffset + drawIdxByteOffs;
+      if(ib.byteSize >= ~0U)
+        m_InPosition.indexByteSize = ib.byteSize;
+      else if(drawIdxByteOffs > ib.byteSize)
+        m_InPosition.indexByteSize = 0;
+      else
+        m_InPosition.indexByteSize = ib.byteSize - drawIdxByteOffs;
+
+      if((action->flags & ActionFlags::Indexed) && m_InPosition.indexByteStride == 0)
+        m_InPosition.indexByteStride = 4U;
+
+      {
+        const ShaderConstant &el = vsinConfig.columns[elIdx];
+        const BufferElementProperties &prop = vsinConfig.props[elIdx];
+
+        m_InPosition.instanced = prop.perinstance;
+        m_InPosition.instStepRate = prop.instancerate;
+
+        if(prop.buffer < vbs.count() && !vsinConfig.genericsEnabled[elIdx])
+        {
+          m_InPosition.vertexResourceId = vbs[prop.buffer].resourceId;
+          m_InPosition.vertexByteStride = vbs[prop.buffer].byteStride;
+          m_InPosition.vertexByteOffset = vbs[prop.buffer].byteOffset + el.byteOffset +
+                                          action->vertexOffset * m_InPosition.vertexByteStride;
+          m_InPosition.vertexByteSize = vbs[prop.buffer].byteSize;
+        }
+        else
+        {
+          m_InPosition.vertexResourceId = ResourceId();
+          m_InPosition.vertexByteStride = 0;
+          m_InPosition.vertexByteOffset = 0;
+        }
+
+        m_InPosition.format = prop.format;
+      }
+          std::cout << "bufferview_C" << std::endl;
+
+      elIdx = m_ModelIn->secondaryColumn();
+
+      if(elIdx >= 0 && elIdx < vsinConfig.columns.count())
+      {
+        const ShaderConstant &el = vsinConfig.columns[elIdx];
+        const BufferElementProperties &prop = vsinConfig.props[elIdx];
+
+        m_InSecondary.instanced = prop.perinstance;
+        m_InSecondary.instStepRate = prop.instancerate;
+
+        if(prop.buffer < vbs.count() && !vsinConfig.genericsEnabled[elIdx])
+        {
+          m_InSecondary.vertexResourceId = vbs[prop.buffer].resourceId;
+          m_InSecondary.vertexByteStride = vbs[prop.buffer].byteStride;
+          m_InSecondary.vertexByteOffset = vbs[prop.buffer].byteOffset + el.byteOffset +
+                                           action->vertexOffset * m_InSecondary.vertexByteStride;
+          m_InSecondary.vertexByteSize = vbs[prop.buffer].byteSize;
+        }
+        else
+        {
+          m_InSecondary.vertexResourceId = ResourceId();
+          m_InSecondary.vertexByteStride = 0;
+          m_InSecondary.vertexByteOffset = 0;
+        }
+
+        m_InSecondary.format = prop.format;
+
+        m_InSecondary.format.compCount = 2;
+        m_InSecondary.format.compType = CompType::Float;
+
+        m_InSecondary.showAlpha = m_ModelIn->secondaryAlpha();
+      }
+    }
+
+        std::cout << "bufferview1" << std::endl;
+
+        // For Textured mode, force secondary to TEXCOORD attribute for UV sampling
+//if(m_Config.visualisationMode == Visualisation::Textured)
+{
+//  int texcoordIdx = -1;
+  int texcoordIdx = 2;// _input2 is the UV stream
+        std::cout << "3looking at " << texcoordIdx << std::endl;
+
+  // Pass 1: look for TexCoord semantic
+  // for(int i = 0; i < vsinConfig.columns.count(); i++)
+  // {
+  //   if(vsinConfig.props[i].systemValue == ShaderBuiltin::TexCoord)
+  //   {
+  //     texcoordIdx = i;
+  //     break;
+  //   }
+  // }
+
+  // Pass 2: fall back to first float2 that isn't position
+  if(texcoordIdx == -1)
+  {
+    int posIdx = m_ModelIn->posColumn();
+    for(int i = 0; i < vsinConfig.columns.count(); i++)
+    {
+      if(i == posIdx)
+        continue;
+      const ResourceFormat &fmt = vsinConfig.props[i].format;
+      if(fmt.compCount == 2 && fmt.compType == CompType::Float)
+      {
+        texcoordIdx = i;
+        break;
+      }
+    }
+  }
+
+      if(texcoordIdx >= 0 && texcoordIdx < vsinConfig.columns.count())
+      {
+        const ShaderConstant &el = vsinConfig.columns[texcoordIdx];
+        const BufferElementProperties &prop = vsinConfig.props[texcoordIdx];
+
+        std::cout << "looking at " << texcoordIdx << std::endl;
+
+        m_InSecondary = MeshFormat();
+        m_InSecondary.instanced = prop.perinstance;
+        m_InSecondary.instStepRate = prop.instancerate;
+
+        if(prop.buffer < vbs.count() && !vsinConfig.genericsEnabled[texcoordIdx])
+        {
+          m_InSecondary.vertexResourceId = vbs[prop.buffer].resourceId;
+          m_InSecondary.vertexByteStride = vbs[prop.buffer].byteStride;
+          m_InSecondary.vertexByteOffset = vbs[prop.buffer].byteOffset + el.byteOffset +
+                                           action->vertexOffset * m_InSecondary.vertexByteStride;
+          m_InSecondary.vertexByteSize = vbs[prop.buffer].byteSize;
+        }
+        m_InSecondary.format = prop.format;
+
+        m_InSecondary.format.compCount = 2;
+        m_InSecondary.format.compType = CompType::Float;
+      }
+    }
+
+    const BufferConfiguration &out1Config = m_ModelOut1->getConfig();
+
+    m_Out1Position = MeshFormat();
+    m_Out1Secondary = MeshFormat();
+
+    if(!out1Config.columns.empty())
+    {
+      int elIdx = m_ModelOut1->posColumn();
+      if(elIdx < 0 || elIdx >= out1Config.columns.count())
+        elIdx = 0;
+
+      const ShaderConstant &el = out1Config.columns[elIdx];
+      const BufferElementProperties &prop = out1Config.props[elIdx];
+
+      m_Out1Position = m_Out1Data;
+      m_Out1Position.vertexByteOffset += el.byteOffset;
+      m_Out1Position.unproject = prop.systemValue == ShaderBuiltin::Position;
+      m_Out1Position.format.compCount = el.type.columns;
+
+      // if geometry/tessellation is enabled, don't unproject VS output data
+      if(m_Ctx.CurPipelineState().GetShader(ShaderStage::Tess_Eval) != ResourceId() ||
+         m_Ctx.CurPipelineState().GetShader(ShaderStage::Geometry) != ResourceId())
+        m_Out1Position.unproject = false;
+
+      elIdx = m_ModelOut1->secondaryColumn();
+
+      if(elIdx >= 0 && elIdx < out1Config.columns.count())
+      {
+        m_Out1Secondary = m_Out1Data;
+        m_Out1Secondary.vertexByteOffset += out1Config.columns[elIdx].byteOffset;
+        m_Out1Secondary.format = prop.format;
+        m_Out1Secondary.showAlpha = m_ModelOut1->secondaryAlpha();
+      }
+    }
+
+          std::cout << "bufferview2" << std::endl;
+//if(m_Config.visualisationMode == Visualisation::Textured)
+{
+//  int texcoordIdx = -1;
+  int texcoordIdx = 2; // _input2 is the UV stream
+      std::cout << "4looking at " << texcoordIdx << std::endl;
+
+  // // Pass 1: look for TexCoord semantic
+  // for(int i = 0; i < out1Config.columns.count(); i++)
+  // {
+  //   if(out1Config.props[i].systemValue == ShaderBuiltin::TexCoord)
+  //   {
+  //     texcoordIdx = i;
+  //     break;
+  //   }
+  // }
+
+  // Pass 2: fall back to first float2 that isn't position
+  if(texcoordIdx == -1)
+  {
+    int posIdx = m_ModelOut1->posColumn();
+    for(int i = 0; i < out1Config.columns.count(); i++)
+    {
+      if(i == posIdx)
+        continue;
+      const ResourceFormat &fmt = out1Config.props[i].format;
+      if(fmt.compCount == 2 && fmt.compType == CompType::Float)
+      {
+        texcoordIdx = i;
+        break;
+      }
+    }
+  }
+
+  if(texcoordIdx >= 0)
+  {
+            std::cout << "2looking at " << texcoordIdx << std::endl;
+
+    m_Out1Secondary = m_Out1Data;
+    m_Out1Secondary.vertexByteOffset += out1Config.columns[texcoordIdx].byteOffset;
+    m_Out1Secondary.format = out1Config.props[texcoordIdx].format;
+  }
+}
+
+    m_Out1Position.allowRestart = m_InPosition.allowRestart;
+    m_Out1Position.restartIndex = m_InPosition.restartIndex;
+
+    const BufferConfiguration &out2Config = m_ModelOut2->getConfig();
+
+    m_Out2Position = MeshFormat();
+    m_Out2Secondary = MeshFormat();
+
+    if(!out2Config.columns.empty())
+    {
+      int elIdx = m_ModelOut2->posColumn();
+      if(elIdx < 0 || elIdx >= out2Config.columns.count())
+        elIdx = 0;
+
+      const ShaderConstant &el = out2Config.columns[elIdx];
+      const BufferElementProperties &prop = out2Config.props[elIdx];
+
+      m_Out2Position = m_Out2Data;
+      m_Out2Position.vertexByteOffset += el.byteOffset;
+      m_Out2Position.unproject = prop.systemValue == ShaderBuiltin::Position;
+
+      elIdx = m_ModelOut2->secondaryColumn();
+
+      if(elIdx >= 0 && elIdx < out2Config.columns.count())
+      {
+        m_Out2Secondary = m_Out2Data;
+        m_Out2Secondary.vertexByteOffset += out2Config.columns[elIdx].byteOffset;
+        m_Out2Secondary.showAlpha = m_ModelOut2->secondaryAlpha();
+      }
+    }
+
+    m_Out2Position.allowRestart = false;
+
+    m_Out2Position.indexByteStride = 0;
+
+    if(!(action->flags & ActionFlags::Indexed))
+      m_Out1Position.indexByteStride = m_InPosition.indexByteStride = 0;
+
+
+
+//gpt
+// After you set up m_Out1Position / m_Out1Secondary
+//const BufferConfiguration &out1Config = m_ModelOut1->getConfig();
+
+// PRIMARY = position output (keep as is)
+int posIdx = m_ModelOut1->posColumn();
+
+// SECONDARY = TEXCOORD
+int texcoordIdx = -1;
+
+// Pass 1: find TEXCOORD semantic in VS output
+for(int i = 0; i < out1Config.columns.count(); i++)
+{
+    if(i == posIdx) continue;
+
+    // look for float2 TEXCOORD
+    const ResourceFormat &fmt = out1Config.props[i].format;
+    if(fmt.compCount == 2 && fmt.compType == CompType::Float)
+    {
+        texcoordIdx = i;
+        break;
+    }
+}
+
+// fallback if not found
+if(texcoordIdx < 0)
+{
+    // take first float2 that isn't position
+    for(int i = 0; i < out1Config.columns.count(); i++)
+    {
+        if(i == posIdx) continue;
+        const ResourceFormat &fmt = out1Config.props[i].format;
+        if(fmt.compCount == 2 && fmt.compType == CompType::Float)
+        {
+            texcoordIdx = i;
+            break;
+        }
+    }
+}
+
+// assign SECONDARY_NAME properly
+if(texcoordIdx >= 0 && texcoordIdx < out1Config.columns.count())
+{
+    const BufferElementProperties &prop = out1Config.props[texcoordIdx];
+
+    m_Out1Secondary = m_Out1Data; // VS output buffer
+    m_Out1Secondary.vertexByteOffset += out1Config.columns[texcoordIdx].byteOffset;
+    m_Out1Secondary.vertexByteStride = vbs[prop.buffer].byteStride;  // <--- use buffer stride
+    m_Out1Secondary.vertexResourceId = vbs[prop.buffer].resourceId;
+    m_Out1Secondary.format = prop.format;
+    m_Out1Secondary.instanced = prop.perinstance;
+    m_Out1Secondary.instStepRate = prop.instancerate;
+}
+//gpt
+
   }
   else
   {
@@ -4969,6 +5664,307 @@ void BufferViewer::UpdateCurrentMeshConfig()
     case MeshDataStage::TaskOut:
     default: break;
   }
+//  m_Config.textureId = m_Ctx.CurPipelineState().Get
+
+std::cout << "Hello m_Config.visualisationMode: " <<(int)m_Config.visualisationMode<< std::endl;
+
+
+  // ADD THIS: override secondary with UV stream for Textured mode
+//   if(m_Config.visualisationMode == Visualisation::Textured)
+//   {
+//     // Use position buffer as base, offset to _input2 (UV attribute at byte offset 24)
+//     m_Config.second = m_Config.position;
+// std::cout << "Hello stdout1" << std::endl;
+//     m_Config.second.vertexByteOffset = m_Config.position.vertexByteOffset -
+//                                        m_Config.position.vertexByteOffset % m_Config.position.vertexByteStride +
+//                                        24;  // byte offset of _input2 within the vertex
+// std::cout << "Hello stdout2" << std::endl;
+//     m_Config.second.format.compCount = 2;
+// std::cout << "Hello stdout3" << std::endl;
+//     m_Config.second.format.compType = CompType::Float;
+// std::cout << "Hello stdout4" << std::endl;
+//     m_Config.second.format.compByteWidth = 4;
+// std::cout << "Hello stdout5" << std::endl;
+//     m_Config.second.format.type = ResourceFormatType::Regular;
+//     std::cout << "UV override: stride=" << m_Config.second.vertexByteStride << std::endl;
+//      std::cout        << "offset=" << m_Config.second.vertexByteOffset << std::endl;
+//       std::cout       << "compCount=" << (int)m_Config.second.format.compCount << std::endl;
+//   }
+
+const BufferConfiguration &cfg = m_ModelIn->getConfig();
+
+   if(m_Config.visualisationMode == Visualisation::Textured)
+   {
+std::cout << "3position.baseVertex = "
+          << m_Config.position.baseVertex << std::endl;
+
+std::cout << "3second.baseVertex = "
+          << m_Config.second.baseVertex << std::endl;
+
+   }
+
+   if(m_Config.visualisationMode == Visualisation::Textured)
+{
+    m_Config.second = m_Config.position;
+
+    m_Config.second.vertexByteOffset = 24;
+
+    m_Config.second.format.compCount = 2;
+    m_Config.second.format.compType = CompType::Float;
+    m_Config.second.format.compByteWidth = 4;
+    m_Config.second.format.type = ResourceFormatType::Regular;
+
+    std::cout << "UV bound to same vertex stream as position" << std::endl;
+}
+
+if(m_Config.visualisationMode == Visualisation::Textured)
+{
+    BufferItemModel *model = nullptr;
+    switch(m_CurStage)
+    {
+        case MeshDataStage::VSIn:  model = m_ModelIn; break;
+        case MeshDataStage::VSOut: model = m_ModelOut1; break;
+        default: break;
+    }
+
+    if(model)
+    {
+        const BufferConfiguration &config = model->getConfig();
+        int posIdx = model->posColumn();
+        for(int i = 0; i < config.columns.count(); i++)
+        {
+            if(i == posIdx) continue;
+            const ResourceFormat &fmt = config.props[i].format;
+            if(fmt.compCount == 2 && fmt.compType == CompType::Float)
+            {
+                m_Config.uvByteOffset = config.columns[i].byteOffset;
+                std::cout << "UV byteOffset=" << m_Config.uvByteOffset << " from column " << i << " name: " << config.columns[i].name.c_str() << std::endl;
+                break;
+            }
+        }
+    }
+}
+
+//11
+
+rdcarray<VertexInputAttribute> attribs = m_Ctx.CurPipelineState().GetVertexInputs();
+for(const VertexInputAttribute &a : attribs)
+{
+    printf("Attrib %s: offset=%u, format=%d\n", a.name.c_str(), a.byteOffset, (int)a.format.compType);
+//    this->m_ModelIn->setSecondaryColumn(2, true, false);
+}
+//11
+//22
+// // Find and assign the UV buffer as the secondary attribute for mesh display
+// this->m_ModelIn.
+// for(size_t i = 0; i < curMesh.vbuffers.size(); i++)
+// {
+//     BoundVBuffer &buf = curMesh.vbuffers[i];
+
+//     // Look for the first TEXCOORD attribute in this buffer
+//     for(size_t a = 0; a < buf.attribs.size(); a++)
+//     {
+//         const VertexInputAttribute &attr = buf.attribs[a];
+
+//         // Depending on the mesh, TEXCOORD0 or TEXCOORD1
+//         if(attr.semantic == "TEXCOORD0" || attr.semantic == "TEXCOORD1")
+//         {
+//             // Assign this buffer as the secondary stream
+//             curMesh.secondaryAttribBuffer = &buf;
+//             curMesh.secondaryAttribOffset = attr.byteOffset;
+//             curMesh.secondaryAttribFormat = attr.format; // float2 usually
+//             goto UVAssigned; // break both loops once found
+//         }
+//     }
+// }
+//22
+
+
+//try again
+//   if(m_Config.visualisationMode == Visualisation::Textured)
+//   {
+//     int posCol = m_ModelIn->posColumn();
+//     int uvCol  = m_ModelIn->secondaryColumn();
+//     uint64_t uvOffset = m_Config.second.vertexByteOffset;
+
+//     // Use position buffer as base, offset to _input2 (UV attribute at byte offset 24)
+// //    m_Config.second = m_Config.position;
+
+//     // copy only buffer binding info
+//     m_Config.second.vertexResourceId = m_Config.position.vertexResourceId;
+//     m_Config.second.vertexByteStride = m_Config.position.vertexByteStride;
+
+
+// std::cout << "Hello stdout1" << std::endl;
+// //    m_Config.second.vertexByteOffset = m_Config.position.vertexByteOffset -
+// //                                       (m_Config.position.vertexByteOffset % m_Config.position.vertexByteStride) +
+// //                                       uvOffset;  // byte offset of _input2 within the vertex
+
+// m_Config.second.vertexByteOffset =
+//         m_Config.position.vertexByteOffset + uvOffset;
+
+// std::cout << "Hello stdout2" << std::endl;
+//     m_Config.second.format.compCount = 2;
+// std::cout << "Hello stdout3" << std::endl;
+//     m_Config.second.format.compType = CompType::Float;
+// std::cout << "Hello stdout4" << std::endl;
+//     m_Config.second.format.compByteWidth = 4;
+// std::cout << "Hello stdout5" << std::endl;
+//     m_Config.second.format.type = ResourceFormatType::Regular;
+//     std::cout << "UV override: stride=" << m_Config.second.vertexByteStride << std::endl;
+//      std::cout        << "offset=" << m_Config.second.vertexByteOffset << std::endl;
+//       std::cout       << "compCount=" << (int)m_Config.second.format.compCount << std::endl;
+
+//       std::cout << "UV semantic = "
+//           << cfg.columns[uvCol].name.c_str()
+//           << std::endl;
+
+
+//        std::cout << "m_Config.position.vertexByteOffset = " << m_Config.position.vertexByteOffset << std::endl;
+//        std::cout << "m_Config.second.vertexByteOffset = " << m_Config.second.vertexByteOffset << std::endl;
+//   }
+  //ttry again
+
+int posCol = m_ModelIn->posColumn();
+//int uvCol  = m_ModelIn->secondaryColumn();
+
+//m_ModelIn->setSecondaryColumn(1,true,false);
+
+std::cout << "POSITION stream = " << cfg.props[posCol].buffer << std::endl;
+//std::cout << "UV stream = " << cfg.props[uvCol].buffer << std::endl;
+std::cout << "POSITION col = " << posCol << std::endl;
+//std::cout << "uv col = " << uvCol << std::endl;
+
+for(size_t i = 0; i < cfg.columns.size(); i++)
+{
+    std::cout
+        << i << " : "
+        << cfg.columns[i].name.c_str()
+        << std::endl;
+}
+
+// if(m_Config.visualisationMode == Visualisation::Textured)
+// {
+//     const BufferConfiguration &cfg = m_ModelIn->getConfig();
+
+//     int posCol = m_ModelIn->posColumn();
+//     int uvCol  = m_ModelIn->secondaryColumn();
+
+//     uint32_t uvOffset = cfg.props[uvCol].offset;
+
+//     m_Config.second = m_Config.position;
+
+//     m_Config.second.vertexByteOffset =
+//         m_Config.position.vertexByteOffset -
+//         (m_Config.position.vertexByteOffset % m_Config.position.vertexByteStride) +
+//         uvOffset;
+
+//     m_Config.second.format.compCount = 2;
+//     m_Config.second.format.compType = CompType::Float;
+//     m_Config.second.format.compByteWidth = 4;
+//     m_Config.second.format.type = ResourceFormatType::Regular;
+
+//     std::cout << "UV offset from config = " << uvOffset << std::endl;
+//     std::cout << "Stride = " << m_Config.second.vertexByteStride << std::endl;
+
+//     std::cout << "POSITION offset2 = " << cfg.props[posCol].offset << std::endl;
+// std::cout << "UV offset2 = " << cfg.props[uvCol].offset << std::endl;
+// std::cout << "Stride2 = " << cfg.columns[posCol].byteStride << std::endl;
+// }
+
+
+// if(m_Config.visualisationMode == Visualisation::Textured)
+// {
+//     const BufferConfiguration &vsinConfig = m_ModelIn->getConfig();
+
+//     int uvCol = m_ModelIn->secondaryColumn(); // column index of TEXCOORD
+
+//     const BufferElementProperties &uvProp = vsinConfig.props[uvCol];
+//     const BoundVBuffer &uvVB = m_ModelIn->GetCurrentMesh()->vbuffers[uvProp.buffer];
+
+//     m_Config.second.vertexResourceId = uvVB.resourceId;
+//     m_Config.second.vertexByteStride = uvVB.byteStride;
+//     m_Config.second.vertexByteOffset = uvVB.byteOffset + uvProp.offset;
+
+//     m_Config.second.format.compCount = 2;
+//     m_Config.second.format.compType = CompType::Float;
+//     m_Config.second.format.compByteWidth = 4;
+//     m_Config.second.format.type = ResourceFormatType::Regular;
+
+//     std::cout << "UV stream = " << uvProp.buffer << std::endl;
+//     std::cout << "UV offset = " << uvProp.offset << std::endl;
+//     std::cout << "UV stride = " << uvVB.byteStride << std::endl;
+// }
+
+// std::cout << "Hello stdout" << std::endl;
+//     std::cout << "CurStage:" << (int)m_CurStage << std::endl;
+//     std::cout << "second.vertexResourceId valid:" << (m_Config.second.vertexResourceId != ResourceId()) << std::endl;
+//     std::cout << "second.vertexByteStride:" << m_Config.second.vertexByteStride << std::endl;
+//     std::cout << "second.format.compCount:" << (int)m_Config.second.format.compCount << std::endl;
+
+//std::cout << "QD second stride:" << m_Config.second.vertexByteStride << std::endl;
+// std::cout << "QD offset:" << m_Config.second.vertexByteOffset << std::endl;
+//  std::cout << "QD compCount:" << (int)m_Config.second.format.compCount << std::endl;
+
+
+if(m_Config.visualisationMode == Visualisation::Textured)
+{
+    qDebug() << "CurStage:" << (int)m_CurStage;
+    qDebug() << "second.vertexResourceId valid:" << (m_Config.second.vertexResourceId != ResourceId());
+    qDebug() << "second.vertexByteStride:" << m_Config.second.vertexByteStride;
+    qDebug() << "second.format.compCount:" << m_Config.second.format.compCount;
+  }
+
+const PipeState &pipe = m_Ctx.CurPipelineState();
+//const rdcarray<UsedDescriptor> &descs = pipe.GetAllUsedDescriptors();
+
+
+
+ResourceId firstTexture;
+
+for(const UsedDescriptor &u : pipe.GetAllUsedDescriptors())
+{
+  const Descriptor &d = u.descriptor;
+
+  if(d.type == DescriptorType::ImageSampler ||
+     d.type == DescriptorType::Image)
+  {
+    if(d.resource != ResourceId())
+    {
+      firstTexture = d.resource;
+      break;
+    }
+  }
+}
+
+if(firstTexture != ResourceId())
+{
+  m_Config.textureId = firstTexture;
+}
+
+// const PipeState &pipe = m_Ctx.CurPipelineState();
+// for(const rdcarray<UsedDescriptor> &set : pipe.GetAllUsedDescriptors())
+// {
+//     for(const VulkanPipe::Binding &bind : set.bindings)
+//     {
+//         if(bind.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
+//            bind.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)
+//         {
+//             if(!bind.binds.empty())
+//             {
+//                 ResourceId texId = bind.binds[0].resourceId;
+
+//                 if(texId != ResourceId())
+//                 {
+//                     RDCLOG("Found texture: %s", ToStr(texId).c_str());
+//                     m_Config.textureId = texId;
+//                     // this is your first bound texture
+//                     break;
+//                 }
+//             }
+//         }
+//     }
+// }
 
   UI_UpdateGuessParameters();
 
@@ -7220,14 +8216,23 @@ void BufferViewer::on_visualisation_currentIndexChanged(int index)
   m_Config.visualisationMode = (Visualisation)qMax(0, index);
 
   m_ModelIn->setSecondaryColumn(m_ModelIn->secondaryColumn(),
-                                m_Config.visualisationMode == Visualisation::Secondary,
+                                m_Config.visualisationMode == Visualisation::Secondary
+                                ||m_Config.visualisationMode == Visualisation::Textured,
                                 m_ModelIn->secondaryAlpha());
   m_ModelOut1->setSecondaryColumn(m_ModelOut1->secondaryColumn(),
-                                  m_Config.visualisationMode == Visualisation::Secondary,
+                                  m_Config.visualisationMode == Visualisation::Secondary
+                                  ||m_Config.visualisationMode == Visualisation::Textured,
                                   m_ModelOut1->secondaryAlpha());
   m_ModelOut2->setSecondaryColumn(m_ModelOut2->secondaryColumn(),
-                                  m_Config.visualisationMode == Visualisation::Secondary,
+                                  m_Config.visualisationMode == Visualisation::Secondary
+                                  ||m_Config.visualisationMode == Visualisation::Textured,
                                   m_ModelOut2->secondaryAlpha());
+
+    // if textured mode selected
+    if(m_Config.visualisationMode  == Visualisation::Textured)
+    {
+        UpdateCurrentMeshConfig();
+    }
 
   INVOKE_MEMFN(RT_UpdateAndDisplay);
 }

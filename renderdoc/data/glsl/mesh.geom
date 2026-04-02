@@ -37,9 +37,11 @@ layout(triangle_strip, max_vertices = 3) out;
 
 IO_LOCATION(0) in vec4 vsout_secondary[3];
 IO_LOCATION(1) in vec4 vsout_norm[3];
+IO_LOCATION(2) in vec2 vsout_uv_binding[3];   // ADD
 
 IO_LOCATION(0) out vec4 gsout_secondary;
 IO_LOCATION(1) out vec4 gsout_norm;
+IO_LOCATION(2) out vec2 gsout_uv_binding;     // ADD
 
 void main()
 {
@@ -52,6 +54,7 @@ void main()
     gl_Position = gl_in[i].gl_Position;
     gsout_secondary = vsout_secondary[i];
     gsout_norm = vec4(faceNormal.xyz, 1);
+    gsout_uv_binding = vsout_uv_binding[i];   // ADD
     EmitVertex();
   }
   EndPrimitive();

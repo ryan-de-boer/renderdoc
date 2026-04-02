@@ -39,8 +39,11 @@
 
 IO_LOCATION(0) in vec4 SECONDARY_NAME;
 IO_LOCATION(1) in vec4 NORM_NAME;
+IO_LOCATION(2) in vec2 gsout_uv_binding;
 
 IO_LOCATION(0) out vec4 color_out;
+
+layout(set = 0, binding = 2) uniform sampler2D meshTexture;
 
 void main(void)
 {
@@ -66,8 +69,52 @@ void main(void)
 
     color_out = vec4(SECONDARY_NAME.xyz * abs(dot(lightDir, NORM_NAME.xyz)), 1);
   }
+  else if(type == MESHDISPLAY_TEXTURED)
+  {
+vec3 lightDir = normalize(vec3(0, -0.3f, -1));
+vec2 uv = gsout_uv_binding.xy;
+vec4 texColor = texture(meshTexture, uv);
+float lighting = abs(dot(lightDir, NORM_NAME.xyz));
+lighting = lighting * 0.7 + 1.5;  // scale down dark areas, add ambient lift
+//lighting = lighting * 0.7 + 0.0;  // scale down dark areas, add ambient lift crysis needs lower ambient
+color_out = vec4(texColor.xyz * lighting, 1);
+
+
+//    vec3 lightDir = normalize(vec3(0, -0.3f, -1));
+
+//    vec2 uv = gsout_uv_binding.xy;
+//    vec4 texColor = texture(meshTexture, uv);
+//    //brighten
+//    texColor = texColor + vec4(0.5,0.5,0.5,0.0)
+//    color_out = vec4(texColor.xyz * abs(dot(lightDir, NORM_NAME.xyz)), 1);
+
+
+//    vec2 uv = gsout_uv_binding.xy;
+//    uv.y = 1.0 - uv.y;    // flip V
+//    color_out = texture(meshTexture, uv);
+
+    // debug: show UVs as RG colour - should show red/green gradient if UVs are correct
+//    color_out = vec4(gsout_uv_binding.x, gsout_uv_binding.y, 0.0, 1.0);
+
+//    vec2 uv = SECONDARY_NAME.xy;
+//    uv.y = 1.0 - uv.y;    // flip V
+//    color_out = texture(meshTexture, uv);
+//    color_out = texture(meshTexture, vec2(0.5,0.5));
+  }
   else    // if(type == MESHDISPLAY_SOLID)
   {
     color_out = vec4(Mesh.color.xyz, 1);
   }
+
+// In main(), add a case for MESHDISPLAY_TEXTURED:
+#if defined(VULKAN)
+//  if(ubo.displayFormat == MESHDISPLAY_TEXTURED)
+//  {
+//    // secondary.xy carries the UVs (same as Secondary mode uses secondary channel)
+//    vec2 uv = secondary.xy;
+//    fragColor = texture(meshTexture, uv);
+//    return;
+//  }
+#endif
+
 }

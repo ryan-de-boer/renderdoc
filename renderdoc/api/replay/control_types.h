@@ -328,6 +328,9 @@ struct MeshDisplay
   MeshDisplay(const MeshDisplay &) = default;
   MeshDisplay &operator=(const MeshDisplay &) = default;
 
+  ResourceId textureId;   // texture to use in Textured visualisation mode
+  uint32_t uvByteOffset = 0;
+
   DOCUMENT(R"(The :class:`MeshDataStage` where this mesh data comes from.
 
 :type: MeshDataStage
