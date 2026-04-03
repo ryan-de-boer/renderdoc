@@ -49,6 +49,8 @@ BINDING(0) uniform MeshUBOData
   float padding;
 
   uvec4 meshletColours[12];
+
+  float ambient;
 }
 INST_NAME(Mesh);
 

@@ -71,13 +71,27 @@ void main(void)
   }
   else if(type == MESHDISPLAY_TEXTURED)
   {
+
+
 vec3 lightDir = normalize(vec3(0, -0.3f, -1));
 vec2 uv = gsout_uv_binding.xy;
+//uv.y = 1.0 - uv.y;    // flip V
 vec4 texColor = texture(meshTexture, uv);
+
+    // discard fully transparent pixels so they don't affect depth
+    if(texColor.w < 0.1)
+        discard;
+
 float lighting = abs(dot(lightDir, NORM_NAME.xyz));
-lighting = lighting * 0.7 + 1.5;  // scale down dark areas, add ambient lift
+
+//lighting = lighting * 0.7 + 1.5;  // scale down dark areas, add ambient lift quake
 //lighting = lighting * 0.7 + 0.0;  // scale down dark areas, add ambient lift crysis needs lower ambient
-color_out = vec4(texColor.xyz * lighting, 1);
+lighting = lighting * 0.7 + Mesh.ambient;
+
+color_out = vec4(texColor.xyz * lighting, texColor.w);
+
+    // debug: show UVs as RG colour - should show red/green gradient if UVs are correct
+//    color_out = vec4(gsout_uv_binding.x, gsout_uv_binding.y, 0.0, 1.0);
 
 
 //    vec3 lightDir = normalize(vec3(0, -0.3f, -1));
@@ -93,8 +107,6 @@ color_out = vec4(texColor.xyz * lighting, 1);
 //    uv.y = 1.0 - uv.y;    // flip V
 //    color_out = texture(meshTexture, uv);
 
-    // debug: show UVs as RG colour - should show red/green gradient if UVs are correct
-//    color_out = vec4(gsout_uv_binding.x, gsout_uv_binding.y, 0.0, 1.0);
 
 //    vec2 uv = SECONDARY_NAME.xy;
 //    uv.y = 1.0 - uv.y;    // flip V

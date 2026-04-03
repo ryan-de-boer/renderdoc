@@ -5290,7 +5290,7 @@ void BufferViewer::UI_ConfigureVertexPipeFormatsOLD()
 {
 //  int texcoordIdx = -1;
   int texcoordIdx = 2;// _input2 is the UV stream
-        std::cout << "3looking at " << texcoordIdx << std::endl;
+        std::cout << "8looking at " << texcoordIdx << std::endl;
 
   // Pass 1: look for TexCoord semantic
   // for(int i = 0; i < vsinConfig.columns.count(); i++)
@@ -5314,6 +5314,7 @@ void BufferViewer::UI_ConfigureVertexPipeFormatsOLD()
       if(fmt.compCount == 2 && fmt.compType == CompType::Float)
       {
         texcoordIdx = i;
+
         break;
       }
     }
@@ -5707,7 +5708,7 @@ std::cout << "3second.baseVertex = "
 {
     m_Config.second = m_Config.position;
 
-    m_Config.second.vertexByteOffset = 24;
+  //  m_Config.second.vertexByteOffset = 24;
 
     m_Config.second.format.compCount = 2;
     m_Config.second.format.compType = CompType::Float;
@@ -5717,7 +5718,8 @@ std::cout << "3second.baseVertex = "
     std::cout << "UV bound to same vertex stream as position" << std::endl;
 }
 
-if(m_Config.visualisationMode == Visualisation::Textured)
+//dont' gate on textured
+//if(m_Config.visualisationMode == Visualisation::Textured)
 {
     BufferItemModel *model = nullptr;
     switch(m_CurStage)
@@ -5735,15 +5737,48 @@ if(m_Config.visualisationMode == Visualisation::Textured)
         {
             if(i == posIdx) continue;
             const ResourceFormat &fmt = config.props[i].format;
+
+                std::cout << "10Attrib " << config.columns[i].name.c_str() 
+              << ": offset=" << config.columns[i].byteOffset
+              << ", compCount=" << (int)fmt.compCount
+              << ", compByteWidth=" << (int)fmt.compByteWidth
+              << ", compType=" << (int)fmt.compType
+              << ", format=" << (int)fmt.type << std::endl;
+
             if(fmt.compCount == 2 && fmt.compType == CompType::Float)
             {
+              m_Config.meshAmbient = 0.0f;
+              std::cout << "30 GetCaptureFilename: " << m_Ctx.GetCaptureFilename().c_str() << std::endl;
+
+                  std::string temp = m_Ctx.GetCaptureFilename().c_str();
+    // convert string to lowercase
+    std::transform(temp.begin(), temp.end(), temp.begin(),
+                   [](unsigned char c){ return std::tolower(c); });
+    if (temp.find("quake") != std::string::npos)
+    {
+      m_Config.meshAmbient = 1.5f;
+    }
+
+
+              
                 m_Config.uvByteOffset = config.columns[i].byteOffset;
                 std::cout << "UV byteOffset=" << m_Config.uvByteOffset << " from column " << i << " name: " << config.columns[i].name.c_str() << std::endl;
+
+                //crysis using half floats (float16)
+                // set UV format based on component byte width
+if(fmt.compByteWidth == 2)
+//    m_Config.uvFormat = 98;//VK_FORMAT_R16G16_SFLOAT;
+    m_Config.uvFormat = 83;//VK_FORMAT_R16G16_SFLOAT;
+else
+    m_Config.uvFormat = 103;//VK_FORMAT_R32G32_SFLOAT;
+
                 break;
             }
         }
     }
 }
+
+
 
 //11
 

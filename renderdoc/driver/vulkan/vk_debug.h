@@ -104,7 +104,8 @@ public:
   VKMeshDisplayPipelines CacheMeshDisplayPipelines(VkPipelineLayout pipeLayout,
                                                    const MeshFormat &primary,
                                                    const MeshFormat &secondary,
-                                                  uint32_t uvByteOffset);
+                                                  uint32_t uvByteOffset,
+                                                uint32_t uvFormat);
 
   void PatchFixedColShader(VkShaderModule &mod, float col[4]);
   void PatchFixedColShaderObject(VkShaderEXT &shad, float col[4]);

@@ -330,6 +330,9 @@ struct MeshDisplay
 
   ResourceId textureId;   // texture to use in Textured visualisation mode
   uint32_t uvByteOffset = 0;
+//  VkFormat uvFormat = VK_FORMAT_R32G32_SFLOAT; 
+uint32_t uvFormat = 0;
+float meshAmbient = 1.5;
 
   DOCUMENT(R"(The :class:`MeshDataStage` where this mesh data comes from.
 

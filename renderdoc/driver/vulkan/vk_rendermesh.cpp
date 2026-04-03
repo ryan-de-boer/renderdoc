@@ -53,8 +53,14 @@ static int VisModeToMeshDisplayFormat(Visualisation vis, bool showAlpha)
 VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineLayout pipeLayout,
                                                                      const MeshFormat &primary,
                                                                      const MeshFormat &secondary,
-                                                                    uint32_t uvByteOffset = 0)
+                                                                    uint32_t uvByteOffset = 0,
+                                                                  uint32_t uvFormat = 103/*VK_FORMAT_R32G32_SFLOAT*/)
 {
+  if(uvFormat == 0)
+    uvFormat = 103;  // default to float32
+
+  std::cout << "20_CacheMeshDisplayPipelines uvByteOffset="<< uvByteOffset<<" uvFormat="<<uvFormat<<" stride=" << primary.vertexByteStride << std::endl;
+
   // generate a key to look up the map
   uint64_t key = 0;
 
@@ -150,16 +156,37 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
   bit++;
 
     // UV byte offset for textured mode (8 bits, supports offsets 0-255)
-  key |= uint64_t(uvByteOffset & 0xff) << bit;
-  bit += 8;
+//  key |= uint64_t(uvByteOffset & 0xff) << bit;
+//  bit += 8;
+
+  /*
+  key |= uint64_t(uvFormat & 0xff) << bit;
+bit += 8;
+*/
+//was 76 (too much)
+
+// UV byte offset (3 bits: store offset/4, supports offsets 0,4,8,12,16,20,24,28)
+key |= uint64_t((uvByteOffset / 4) & 0x7) << bit;
+bit += 3;
+
+// UV format (1 bit: 0=float16, 1=float32)
+key |= uint64_t(uvFormat == 103 ? 1ULL : 0ULL) << bit;
+bit += 1;
+
+
+std::cout << "11 bits: " << bit << std::endl;
 
   // only 64 bits, make sure they all fit
-  RDCASSERT(bit < 64);
+  RDCASSERT(bit <= 64);
 
   VKMeshDisplayPipelines &cache = m_CachedMeshPipelines[key];
 
   if(cache.pipes[(uint32_t)Visualisation::NoSolid] != VK_NULL_HANDLE)
+  {
+    std::cout << "6Returning cached pipeline, NOT recreating" << std::endl;
     return cache;
+  }
+    std::cout << "6Creating NEW pipeline" << std::endl;
 
   const VkDevDispatchTable *vt = ObjDisp(m_Device);
   VkResult vkr = VK_SUCCESS;
@@ -200,7 +227,13 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
 //{2, 0, VK_FORMAT_R32G32_SFLOAT, 24}, //_input2
 //second for wall
 //{2, 0, VK_FORMAT_R32G32_SFLOAT, 12}, //_input1
-{2, 0, VK_FORMAT_R32G32_SFLOAT, uvByteOffset}, //_inputN
+//{2, 0, VK_FORMAT_R32G32_SFLOAT, uvByteOffset}, //_inputN
+//{2, 0, VK_FORMAT_R32G32_SFLOAT, 12}, //_inputN
+//{2, 0, (VkFormat)uvFormat, uvByteOffset}, //_inputN and crysis might have half float
+//{2, 0, VK_FORMAT_R16G16_SFLOAT, uvByteOffset}, //_inputN
+
+{2, 0, (VkFormat)uvFormat, uvByteOffset}, //_inputN
+//crysis? VK_FORMAT_R16G16_SFLOAT
 
   };
 
@@ -208,6 +241,7 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
   {
     cache.primaryStridePadding = primaryStridePadding;
     vertAttrs[0].offset += primaryStridePadding;
+    vertAttrs[2].offset += primaryStridePadding;  // ADD THIS - UV must also account for padding
   }
 
   if(secondary.vertexByteOffset > secondaryStridePadding)
@@ -215,6 +249,20 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
     cache.secondaryStridePadding = secondaryStridePadding;
     vertAttrs[1].offset += secondaryStridePadding;
   }
+
+
+
+      std::cout << "4vertAttrs[2] binding="<<vertAttrs[2].binding<< " format=" << vertAttrs[2].format<< " offset=" << vertAttrs[2].offset << std::endl;
+
+std::cout << "test1" << std::endl;
+      // sanity check UV attribute fits within vertex
+// if(uvByteOffset + (uvFormat == 83 ? 4u : 8u) > primary.vertexByteStride)
+// {
+//   std::cout << "12 UV byte offset " << uvByteOffset << " doesn't fit in stride " << primary.vertexByteStride << ", disabling UV attribute" << std::endl;
+//     // fall back to 3 attributes with UV at offset 0
+//     vertAttrs[2].offset = 0;
+// }
+
 
   VkPipelineVertexInputStateCreateInfo vi = {
       VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, NULL, 0, 2, binds, 3, vertAttrs,
@@ -237,6 +285,7 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
                                               : MakeVkPrimitiveTopology(primary.topology),
       false,
   };
+std::cout << "test2" << std::endl;
 
   ia.primitiveRestartEnable = primary.allowRestart;
 
@@ -291,16 +340,28 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
       1.0f,
   };
 
+  // VkPipelineColorBlendAttachmentState attState = {
+  //     false,
+  //     VK_BLEND_FACTOR_ONE,
+  //     VK_BLEND_FACTOR_ZERO,
+  //     VK_BLEND_OP_ADD,
+  //     VK_BLEND_FACTOR_ONE,
+  //     VK_BLEND_FACTOR_ZERO,
+  //     VK_BLEND_OP_ADD,
+  //     0xf,
+  // };
+
   VkPipelineColorBlendAttachmentState attState = {
-      false,
-      VK_BLEND_FACTOR_ONE,
-      VK_BLEND_FACTOR_ZERO,
-      VK_BLEND_OP_ADD,
-      VK_BLEND_FACTOR_ONE,
-      VK_BLEND_FACTOR_ZERO,
-      VK_BLEND_OP_ADD,
-      0xf,
-  };
+    true,                                    // blendEnable
+    VK_BLEND_FACTOR_SRC_ALPHA,              // srcColorBlendFactor
+    VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,    // dstColorBlendFactor
+    VK_BLEND_OP_ADD,                        // colorBlendOp
+    VK_BLEND_FACTOR_ONE,                    // srcAlphaBlendFactor
+    VK_BLEND_FACTOR_ZERO,                   // dstAlphaBlendFactor
+    VK_BLEND_OP_ADD,                        // alphaBlendOp
+    0xf,                                    // colorWriteMask
+};
+std::cout << "test3" << std::endl;
 
   VkPipelineColorBlendStateCreateInfo cb = {
       VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
@@ -395,11 +456,13 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
   rs.polygonMode = VK_POLYGON_MODE_LINE;
   rs.lineWidth = 1.0f;
   ds.depthTestEnable = false;
+std::cout << "test4" << std::endl;
 
   // to be friendlier to implementations that don't support LINE polygon mode, when the topology is
   // already lines, we can just use fill. This is most commonly used for the helpers
   if(primary.topology == Topology::LineList)
     rs.polygonMode = VK_POLYGON_MODE_FILL;
+std::cout << "test4.01" << std::endl;
 
   // if the device doesn't support non-solid fill mode, fall back to fill. We don't try to patch
   // index buffers for mesh render since it's not worth the trouble - mesh rendering happens locally
@@ -409,16 +472,20 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
     RDCWARN("Can't render mesh wireframes without non-solid fill mode support");
     rs.polygonMode = VK_POLYGON_MODE_FILL;
   }
+std::cout << "test4.02" << std::endl;
 
   vkr = vt->CreateGraphicsPipelines(Unwrap(m_Device), VK_NULL_HANDLE, 1, &pipeInfo, NULL,
                                     &cache.pipes[VKMeshDisplayPipelines::ePipe_Wire]);
+std::cout << "test4.021" << std::endl;
   CHECK_VKR(m_pDriver, vkr);
+std::cout << "test4.03" << std::endl;
 
   ds.depthTestEnable = true;
 
   vkr = vt->CreateGraphicsPipelines(Unwrap(m_Device), VK_NULL_HANDLE, 1, &pipeInfo, NULL,
                                     &cache.pipes[VKMeshDisplayPipelines::ePipe_WireDepth]);
   CHECK_VKR(m_pDriver, vkr);
+std::cout << "test4.04" << std::endl;
 
   // solid shading pipeline
   rs.polygonMode = VK_POLYGON_MODE_FILL;
@@ -427,10 +494,12 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
   vkr = vt->CreateGraphicsPipelines(Unwrap(m_Device), VK_NULL_HANDLE, 1, &pipeInfo, NULL,
                                     &cache.pipes[VKMeshDisplayPipelines::ePipe_Solid]);
   CHECK_VKR(m_pDriver, vkr);
+std::cout << "test4.05" << std::endl;
 
   ds.depthTestEnable = true;
   rs.depthClampEnable = false;
 
+std::cout << "test4.1" << std::endl;
   vkr = vt->CreateGraphicsPipelines(Unwrap(m_Device), VK_NULL_HANDLE, 1, &pipeInfo, NULL,
                                     &cache.pipes[VKMeshDisplayPipelines::ePipe_SolidDepth]);
   CHECK_VKR(m_pDriver, vkr);
@@ -448,9 +517,11 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
                                       &cache.pipes[VKMeshDisplayPipelines::ePipe_Secondary]);
     CHECK_VKR(m_pDriver, vkr);
   }
+std::cout << "test4.2" << std::endl;
 
   vertAttrs[1].binding = 0;
   vi.vertexBindingDescriptionCount = 1;
+ vi.vertexAttributeDescriptionCount = 3; // but 3 attributes, all from binding 0
 
   // flat lit pipeline, needs geometry shader to calculate face normals
   stages[2].module = Unwrap(m_pDriver->GetShaderCache()->GetBuiltinModule(BuiltinShader::MeshGS));
@@ -460,16 +531,21 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
   if(stages[2].module != VK_NULL_HANDLE && ia.topology != VK_PRIMITIVE_TOPOLOGY_POINT_LIST &&
      ia.topology != VK_PRIMITIVE_TOPOLOGY_LINE_LIST)
   {
+//    ds.depthWriteEnable = false;  // don't write depth so transparent areas don't occlude geometry
     vkr = vt->CreateGraphicsPipelines(Unwrap(m_Device), VK_NULL_HANDLE, 1, &pipeInfo, NULL,
                                       &cache.pipes[VKMeshDisplayPipelines::ePipe_Lit]);
     CHECK_VKR(m_pDriver, vkr);
+//    ds.depthWriteEnable = true;   // restore for other pipelines
   }
+std::cout << "test4.3" << std::endl;
 
   for(uint32_t i = 0; i < VKMeshDisplayPipelines::ePipe_Count; i++)
     if(cache.pipes[i] != VK_NULL_HANDLE)
       m_pDriver->GetResourceManager()->WrapResource(ResourceId(), Unwrap(m_Device), cache.pipes[i]);
+std::cout << "test4.4" << std::endl;
 
   vt->DestroyRenderPass(Unwrap(m_Device), rp, NULL);
+std::cout << "test5" << std::endl;
 
   return cache;
 }
@@ -477,6 +553,8 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
 void VulkanReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &secondaryDraws,
                               const MeshDisplay &cfg)
 {
+       std::cout << "5CacheMeshDisplayPipelines uvByteOffset="<< cfg.uvByteOffset << " stride=" << cfg.position.vertexByteStride << std::endl;
+
   if(cfg.position.vertexResourceId == ResourceId() ||
      !m_pDriver->GetResourceManager()->HasResource(cfg.position.vertexResourceId) ||
      cfg.position.numIndices == 0)
@@ -709,7 +787,7 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &seco
   }
 
   VKMeshDisplayPipelines cache = GetDebugManager()->CacheMeshDisplayPipelines(
-      m_MeshRender.PipeLayout, cfg.position, cfg.second, cfg.uvByteOffset);
+      m_MeshRender.PipeLayout, cfg.position, cfg.second, cfg.uvByteOffset, cfg.uvFormat);
 
   if(cfg.position.vertexResourceId != ResourceId())
   {
@@ -723,6 +801,8 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &seco
       offs += cfg.position.vertexByteStride * (cfg.curInstance / cfg.position.instStepRate);
 
     offs -= cache.primaryStridePadding;
+
+    std::cout << "13pos bind: offs="<<(uint64_t)offs << " primaryStridePadding="<<cache.primaryStridePadding<<" vertexByteOffset="<<(uint64_t)cfg.position.vertexByteOffset<<" stride=" << cfg.position.vertexByteStride << std::endl;
 
     vt->CmdBindVertexBuffers(Unwrap(cmd), 0, 1, UnwrapPtr(vb), &offs);
   }
@@ -740,6 +820,11 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &seco
       offs += cfg.second.vertexByteStride * (cfg.curInstance / cfg.second.instStepRate);
 
     offs -= cache.secondaryStridePadding;
+
+  std::cout << "Binding pos buffer: offs="<<(uint64_t)offs<<" stride=" << cfg.position.vertexByteStride << " numIndices=" << cfg.position.numIndices << " uvByteOffset=" <<cfg.uvByteOffset << std::endl;
+
+//  std::cout  << "TEXCOORD format details: compCount=" << (int)cfg.props[i].format.compCount
+//         << "compByteWidth=" << (int)cfg.props[i].format.compByteWidth << std::endl;
 
     vt->CmdBindVertexBuffers(Unwrap(cmd), 1, 1, UnwrapPtr(vb), &offs);
   }
@@ -777,6 +862,9 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &seco
 
     if(finalVisualisation == Visualisation::Lit || finalVisualisation == Visualisation::Textured || finalVisualisation == Visualisation::Explode)
       meshUniforms.invProj = projMat.Inverse();
+
+//    meshUniforms.ambient = 1.5f;
+    meshUniforms.ambient = cfg.meshAmbient;
 
     meshUniforms.color = Vec4f(0.8f, 0.8f, 0.0f, 1.0f);
     meshUniforms.displayFormat = VisModeToMeshDisplayFormat(finalVisualisation, cfg.second.showAlpha);
@@ -931,6 +1019,10 @@ RDCLOG("texView=%p liveImage=%p format=%d", (void*)texView, (void*)Unwrap(liveIm
       vt->DestroyImageView(Unwrap(dev), texView, NULL);
     }
 
+     if(finalVisualisation == Visualisation::Textured)
+ {
+//   meshUniforms.ambient = 1.5;
+ }
 
     //random texture mode or grey mode when wrong
 // if(finalVisualisation == Visualisation::Textured)
@@ -961,6 +1053,24 @@ RDCLOG("texView=%p liveImage=%p format=%d", (void*)texView, (void*)Unwrap(liveIm
 //     }
 // }
 
+// if(finalVisualisation == Visualisation::Textured)
+// {
+// //    uint32_t numVerts = cfg.position.numIndices;
+//     uint32_t numVerts = RDCMIN(cfg.position.numIndices, 128u); // BBoxVB holds 128 Vec4f
+//     VkDeviceSize vboffs = 0;
+//     Vec2f *uvptr = (Vec2f *)m_MeshRender.BBoxVB.Map(vboffs, sizeof(Vec2f) * numVerts);
+//     if(uvptr)
+//     {
+//         for(uint32_t i = 0; i < numVerts; i++)
+//         {
+//             uvptr[i].x = (float)(i % 7) / 7.0f;
+//             uvptr[i].y = (float)(i % 13) / 13.0f;
+//         }
+//         m_MeshRender.BBoxVB.Unmap();
+//         vt->CmdBindVertexBuffers(Unwrap(cmd), 2, 1,
+//                                  &m_MeshRender.BBoxVB.UnwrappedBuffer(), &vboffs);
+//     }
+// }
 
 // if(finalVisualisation == Visualisation::Textured)
 // {
@@ -1343,6 +1453,7 @@ if(finalVisualisation == Visualisation::Textured)
       meshUniforms.mvp = ModelViewProj;
       meshUniforms.color = Vec4f(1.0f, 1.0f, 1.0f, 1.0f);
       meshUniforms.homogenousInput = cfg.position.unproject;
+//      meshUniforms.ambient = 1.5f;
 
       MeshUBOData *ubodata = (MeshUBOData *)m_MeshRender.UBO.Map(&dynOffs[0]);
       if(!ubodata)
