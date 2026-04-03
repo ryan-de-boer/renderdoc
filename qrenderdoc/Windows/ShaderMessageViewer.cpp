@@ -70,6 +70,11 @@ ShaderMessageViewer::ShaderMessageViewer(ICaptureContext &ctx, ShaderStageMask s
   QObject::connect(action, &QAction::triggered, this, &ShaderMessageViewer::exportCSV);
   menu->addAction(action);
 
+  // action = new QAction(tr("Export to &OBJ"));
+  // action->setIcon(Icons::save());
+  // QObject::connect(action, &QAction::triggered, this, &ShaderMessageViewer::exportOBJ);
+  // menu->addAction(action);
+
   ui->exportButton->setMenu(menu);
   QObject::connect(ui->exportButton, &QToolButton::clicked, this, &ShaderMessageViewer::exportText);
 
@@ -692,6 +697,77 @@ void ShaderMessageViewer::exportCSV()
 {
   exportData(true);
 }
+
+// void ShaderMessageViewer::exportOBJ()
+// {
+//     QString filter;
+//   QString title;
+//     filter = tr("OBJ Files (*.obj)");
+//     title = tr("Export buffer to OBJ");
+
+//   QString filename =
+//       RDDialog::getSaveFileName(this, title, QString(), tr("%1;;All files (*)").arg(filter));
+
+//   if(filename.isEmpty())
+//     return;
+
+//   QFile *f = new QFile(filename);
+
+//   QIODevice::OpenMode flags = QIODevice::WriteOnly | QFile::Truncate | QIODevice::Text;
+
+//   if(!f->open(flags))
+//   {
+//     delete f;
+//     RDDialog::critical(this, tr("Error exporting file"),
+//                        tr("Couldn't open file '%1' for writing").arg(filename));
+//     return;
+//   }
+
+//   LambdaThread *exportThread = new LambdaThread([this, f]() {
+//     QTextStream s(f);
+
+//     bool compute = (m_OrigShaders[5] != ResourceId());
+
+//     const int start = compute ? 1 : 2;
+//     const int end = 3;
+
+//     int locationWidth = 0;
+//     for(int i = 0; i < ui->messages->topLevelItemCount(); i++)
+//     {
+//       RDTreeWidgetItem *node = ui->messages->topLevelItem(i);
+
+//       locationWidth = qMax(locationWidth, node->text(start).length());
+//       if(compute)
+//         locationWidth = qMax(locationWidth, node->text(start + 1).length());
+//     }
+
+//     for(int i = 0; i < ui->messages->topLevelItemCount(); i++)
+//     {
+//       RDTreeWidgetItem *node = ui->messages->topLevelItem(i);
+//       {
+//         int col = start;
+//         for(; col <= end - 1; col++)
+//           s << QFormatStr("%1").arg(node->text(col), -locationWidth) << "\t";
+//         s << node->text(col) << "\n";
+//       }
+//     }
+
+//     f->close();
+
+//     delete f;
+//   });
+//   exportThread->start();
+
+//   // wait a short while before displaying the progress dialog (which won't show if we're already
+//   // done by the time we reach it)
+//   for(int i = 0; exportThread->isRunning() && i < 100; i++)
+//     QThread::msleep(5);
+
+//   ShowProgressDialog(this, tr("Exporting messages"),
+//                      [exportThread]() { return !exportThread->isRunning(); });
+
+//   exportThread->deleteLater();
+// }
 
 void ShaderMessageViewer::exportData(bool csv)
 {

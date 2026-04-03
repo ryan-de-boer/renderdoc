@@ -59,6 +59,7 @@ struct BufferExport
   {
     CSV,
     RawBytes,
+    OBJ,
   };
 
   ExportFormat format;
@@ -167,6 +168,7 @@ private slots:
 
   void updateExportActionNames();
   void exportData(const BufferExport &params);
+  void exportOBJ(const BufferExport &params);
   void debugVertex();
   void debugMeshThread();
   void meshDebugSelector_beginDebug(const rdcfixedarray<uint32_t, 3> &group,
@@ -333,6 +335,7 @@ private:
 
   QAction *m_ExportCSV = NULL;
   QAction *m_ExportBytes = NULL;
+  QAction *m_ExportOBJ = NULL;
   QAction *m_DebugVert = NULL;
   QAction *m_DebugMeshThread = NULL;
   QAction *m_FilterMesh = NULL;

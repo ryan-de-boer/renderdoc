@@ -2552,9 +2552,14 @@ BufferViewer::BufferViewer(ICaptureContext &ctx, bool meshview, QWidget *parent)
   m_ExportCSV->setIcon(Icons::save());
   m_ExportBytes = new QAction(this);
   m_ExportBytes->setIcon(Icons::save());
+  m_ExportOBJ = new QAction(this);
+  m_ExportOBJ->setIcon(Icons::save());
+  QString obj = tr("Export%1 to &OBJ");
+  m_ExportOBJ->setText(obj.arg(QString()));
 
   m_ExportMenu->addAction(m_ExportCSV);
   m_ExportMenu->addAction(m_ExportBytes);
+  m_ExportMenu->addAction(m_ExportOBJ);
 
   m_DebugVert = new QAction(tr("&Debug this Vertex"), this);
   m_DebugVert->setIcon(Icons::wrench());
@@ -2579,6 +2584,8 @@ BufferViewer::BufferViewer(ICaptureContext &ctx, bool meshview, QWidget *parent)
                    [this] { exportData(BufferExport(BufferExport::CSV)); });
   QObject::connect(m_ExportBytes, &QAction::triggered,
                    [this] { exportData(BufferExport(BufferExport::RawBytes)); });
+  QObject::connect(m_ExportOBJ, &QAction::triggered,
+                   [this] { exportOBJ(BufferExport(BufferExport::OBJ)); });
   QObject::connect(m_DebugVert, &QAction::triggered, this, &BufferViewer::debugVertex);
   QObject::connect(m_DebugMeshThread, &QAction::triggered, this, &BufferViewer::debugMeshThread);
   QObject::connect(m_RemoveFilter, &QAction::triggered,
@@ -7381,6 +7388,7 @@ void BufferViewer::updateExportActionNames()
 {
   QString csv = tr("Export%1 to &CSV");
   QString bytes = tr("Export%1 to &Bytes");
+  QString obj = tr("Export%1 to &OBJ");
 
   bool valid = m_Ctx.IsCaptureLoaded() && m_Ctx.CurAction();
 
@@ -7397,13 +7405,17 @@ void BufferViewer::updateExportActionNames()
   {
     m_ExportCSV->setText(csv.arg(QString()));
     m_ExportBytes->setText(bytes.arg(QString()));
+    m_ExportOBJ->setText(obj.arg(QString()));
     m_ExportCSV->setEnabled(false);
     m_ExportBytes->setEnabled(false);
+    m_ExportOBJ->setEnabled(false);
+
     return;
   }
 
   m_ExportCSV->setEnabled(true);
   m_ExportBytes->setEnabled(m_BufferID != ResourceId());
+  m_ExportOBJ->setEnabled(true);
 
   if(m_MeshView)
   {
@@ -7780,6 +7792,589 @@ void BufferViewer::exportData(const BufferExport &params)
       }
     }
     else if(params.format == BufferExport::CSV)
+    {
+      QTextStream ts(f);
+
+      ts << tr("Name,Value,Byte Offset,Type\n");
+
+      for(int i = 0; i < ui->fixedVars->topLevelItemCount(); i++)
+        exportCSV(ts, QString(), ui->fixedVars->topLevelItem(i));
+    }
+
+    f->close();
+
+    delete f;
+  }
+}
+
+
+void SaveTexture(QString objFilename)
+{
+
+}
+
+void BufferViewer::exportOBJ(const BufferExport &params)
+{
+  if(!m_Ctx.IsCaptureLoaded())
+    return;
+
+  if(!m_Ctx.CurAction())
+    return;
+
+  if(!m_CurView && !m_CurFixed)
+    return;
+
+  QString filter;
+  QString title;
+    filter = tr("OBJ Files (*.obj)");
+    title = tr("Export buffer to OBJ");
+
+  QString filename =
+      RDDialog::getSaveFileName(this, title, QString(), tr("%1;;All files (*)").arg(filter));
+
+  if(filename.isEmpty())
+    return;
+
+  QFile *f = new QFile(filename);
+
+  QIODevice::OpenMode flags = QIODevice::WriteOnly | QFile::Truncate;
+
+  if(params.format == BufferExport::OBJ)
+    flags |= QIODevice::Text;
+
+  if(!f->open(flags))
+  {
+    delete f;
+    RDDialog::critical(this, tr("Error exporting file"),
+                       tr("Couldn't open file '%1' for writing").arg(filename));
+    return;
+  }
+
+  if(m_MeshView)
+  {
+    ANALYTIC_SET(Export.MeshOutput, true);
+  }
+  else
+  {
+    ANALYTIC_SET(Export.RawBuffer, true);
+  }
+
+  if(m_CurView)
+  {
+    BufferItemModel *model = (BufferItemModel *)m_CurView->model();
+
+    LambdaThread *exportThread = new LambdaThread([this, params, model, f, filename]() {
+      if(params.format == BufferExport::RawBytes)
+      {
+        const BufferConfiguration &config = model->getConfig();
+
+        if(!m_MeshView)
+        {
+          // this is the simplest possible case, we just dump the contents of the first buffer.
+          if(!m_IsBuffer || config.buffers[0]->size() >= m_ByteSize)
+          {
+            f->write((const char *)config.buffers[0]->data(), int(config.buffers[0]->size()));
+          }
+          else
+          {
+            // For buffers we have to handle reading in pages though as we might not have everything
+            // in memory.
+            ResourceId buff = m_BufferID;
+
+            static const uint64_t maxChunkSize = 4 * 1024 * 1024;
+            for(uint64_t byteOffset = m_ByteOffset; byteOffset < m_ByteSize + m_ByteOffset;
+                byteOffset += maxChunkSize)
+            {
+              uint64_t chunkSize = qMin(m_ByteOffset + m_ByteSize - byteOffset, maxChunkSize);
+
+              // it's fine to block invoke, because this is on the export thread
+              m_Ctx.Replay().BlockInvoke([buff, f, byteOffset, chunkSize](IReplayController *r) {
+                bytebuf chunk = r->GetBufferData(buff, byteOffset, chunkSize);
+                f->write((const char *)chunk.data(), (qint64)chunk.size());
+              });
+            }
+          }
+        }
+        else
+        {
+          // cache column data for the inner loop
+          QVector<CachedElData> cache;
+
+          CacheDataForIteration(cache, config.columns, config.props, config.buffers,
+                                config.curInstance);
+
+          // go row by row, finding the start of the row and dumping out the elements using their
+          // offset and sizes
+          for(int i = 0; i < model->rowCount(); i++)
+          {
+            // manually calculate the index so that we get the real offset (not the displayed
+            // offset)
+            // in the case of vertex output.
+            uint32_t idx = i;
+
+            if(config.indices && config.indices->hasData())
+            {
+              idx = CalcIndex(config.indices, i, config.baseVertex, config.primRestart);
+
+              // completely omit primitive restart indices
+              if(config.primRestart && idx == config.primRestart)
+                continue;
+            }
+
+            for(int col = 0; col < cache.count(); col++)
+            {
+              const CachedElData &d = cache[col];
+              const ShaderConstant *el = d.el;
+              const BufferElementProperties *prop = d.prop;
+
+              if(d.data)
+              {
+                const char *bytes = (const char *)d.data;
+
+                if(!prop->perinstance)
+                  bytes += d.stride * idx;
+
+                if(bytes + d.byteSize <= (const char *)d.end)
+                {
+                  f->write(bytes, d.byteSize);
+                  continue;
+                }
+              }
+
+              // if we didn't continue above, something was wrong, so write nulls
+              f->write(d.nulls);
+            }
+          }
+        }
+      }
+      else if(params.format == BufferExport::OBJ)
+      {
+        //SaveTexture
+  // Save texture as PNG
+TextureSave saveConfig = {};
+saveConfig.resourceId = m_Config.textureId;
+saveConfig.typeCast = CompType::Typeless;
+saveConfig.slice.sliceIndex = 0;
+saveConfig.mip = 0;
+saveConfig.channelExtract = -1;  // all channels
+saveConfig.comp.blackPoint = 0.0f;
+saveConfig.comp.whitePoint = 1.0f;
+saveConfig.alpha = AlphaMapping::Preserve;  // keep alpha
+
+QString texFilename = filename.left(filename.length() - 4) + lit(".png");
+
+ResultDetails result = {ResultCode::Succeeded};
+m_Ctx.Replay().BlockInvoke(
+    [&result, &saveConfig, texFilename](IReplayController *r) 
+    { 
+      saveConfig.destType = FileType::PNG;
+        result = r->SaveTexture(saveConfig, texFilename); 
+    });
+
+if(!result.OK())
+{
+    qDebug() << "Failed to save texture:";// << result.Message();
+}
+else
+{
+    qDebug() << "Saved texture to" << texFilename;
+}
+        //SaveTexture
+
+        //save mtl
+QString mtlFilename = filename.left(filename.length() - 4) + lit(".mtl");
+QString pngFilename = QFileInfo(filename).baseName() + lit(".png");
+
+QFile mtlFile(mtlFilename);
+if(mtlFile.open(QIODevice::WriteOnly | QIODevice::Text))
+{
+    QTextStream m(&mtlFile);
+    m << "newmtl material0\n";
+    m << "Ka 1.0 1.0 1.0\n";
+    m << "Kd 1.0 1.0 1.0\n";
+    m << "Ks 0.0 0.0 0.0\n";
+    m << "map_Kd " << pngFilename << "\n";
+    m << "map_d " << pngFilename << "\n";
+    mtlFile.close();
+}
+        //save mtl
+  
+
+        // otherwise we need to iterate over all the data ourselves
+        const BufferConfiguration &config = model->getConfig();
+
+        QTextStream s(f);
+
+          s << "# Exported from RenderDoc OBJ\n";
+          s << "# " << model->rowCount() << " vertices\n";
+
+
+        s << "# ";
+        for(int i = 0; i < model->columnCount(); i++)
+        {
+          s << model->headerData(i, Qt::Horizontal, Qt::DisplayRole).toString();
+
+          if(i + 1 < model->columnCount())
+            s << ", ";
+        }
+        s << "\n";
+
+        // Find first float2 column (has .x and .y but no .z)
+int uvColStart = -1;
+for(int i = 0; i < model->columnCount() - 1; i++)
+{
+    QString colName = model->headerData(i, Qt::Horizontal, Qt::DisplayRole).toString();
+    QString nextColName = model->headerData(i+1, Qt::Horizontal, Qt::DisplayRole).toString();
+    
+ if(colName.endsWith(lit(".x")) && nextColName.endsWith(lit(".y")))
+{
+    // check there's no .z after
+    bool hasZ = false;
+    if(i + 2 < model->columnCount())
+    {
+        QString afterNext = model->headerData(i+2, Qt::Horizontal, Qt::DisplayRole).toString();
+        QString baseName = colName.left(colName.length() - 2);
+        if(afterNext == baseName + lit(".z"))
+            hasZ = true;
+    }
+    if(!hasZ)
+    {
+        uvColStart = i;
+        break;
+    }
+}
+}
+s << "# UV col start=" << uvColStart << "\n";
+
+// Find first float3 column after position (has .x, .y, .z but no .w)
+int normalColStart = -1;
+int posColStart = 2; // skip VTX and IDX, position starts at col 2
+
+for(int i = posColStart + 3; i < model->columnCount() - 2; i++) // skip position (3 components)
+{
+    QString colName = model->headerData(i, Qt::Horizontal, Qt::DisplayRole).toString();
+    QString col1 = model->headerData(i+1, Qt::Horizontal, Qt::DisplayRole).toString();
+    QString col2 = model->headerData(i+2, Qt::Horizontal, Qt::DisplayRole).toString();
+
+    if(colName.endsWith(lit(".x")) && col1.endsWith(lit(".y")) && col2.endsWith(lit(".z")))
+    {
+        // make sure there's no .w after (which would make it float4)
+        bool hasW = false;
+        if(i + 3 < model->columnCount())
+        {
+            QString col3 = model->headerData(i+3, Qt::Horizontal, Qt::DisplayRole).toString();
+            QString baseName = colName.left(colName.length() - 2);
+            if(col3 == baseName + lit(".w"))
+                hasW = true;
+        }
+        if(!hasW)
+        {
+            normalColStart = i;
+            break;
+        }
+    }
+}
+s << "# Normal col start=" << normalColStart << "\n";
+
+s << "mtllib " << QFileInfo(filename).baseName() << ".mtl\n";
+s << "usemtl material0\n";
+
+        if(m_MeshView || !m_IsBuffer || config.buffers[0]->size() >= m_ByteSize)
+        {
+          // if there's no pagination to worry about, dump using the model's data()
+          for(int row = 0; row < model->rowCount(); row++)
+          {
+
+            // for(int col = 0; col < model->columnCount(); col++)
+            // {
+            //   QList<QString> lines =
+            //       model->data(model->index(row, col), Qt::DisplayRole).toString().split(lit("\n"));
+            //   bool quote = (lines.count() > 1);
+            //   if(quote)
+            //     s << "\"";
+            //   for(int l = 0; l < lines.count(); l++)
+            //   {
+            //     s << lines[l].trimmed();
+            //     if(l + 1 < lines.size())
+            //       s << "\n";
+            //   }
+            //   if(quote)
+            //     s << "\"";
+
+            //   if(col + 1 < model->columnCount())
+            //     s << ", ";
+            // }
+
+          //   s << "v ";
+          //   for(int col = 2; col <= 4; col++)
+          //   {
+          //     QList<QString> lines =
+          //         model->data(model->index(row, col), Qt::DisplayRole).toString().split(lit("\n"));
+          //     bool quote = (lines.count() > 1);
+          //     if(quote)
+          //       s << "\"";
+          //     for(int l = 0; l < lines.count(); l++)
+          //     {
+          //       s << lines[l].trimmed();
+          //       if(l + 1 < lines.size())
+          //         s << "\n";
+          //     }
+          //     if(quote)
+          //       s << "\"";
+
+          //     if(col<4)
+          //       s << " ";
+          //   }
+
+          //   s << "\n";
+          // }
+
+          s << "v ";
+// read x, y, z
+float vx = model->data(model->index(row, 2), Qt::DisplayRole).toString().trimmed().toFloat();
+float vy = model->data(model->index(row, 3), Qt::DisplayRole).toString().trimmed().toFloat();
+float vz = model->data(model->index(row, 4), Qt::DisplayRole).toString().trimmed().toFloat();
+
+// swap Y and Z, negate X (coordinate system conversion)
+s << -vx << " " << vz << " " << vy << "\n";
+          }
+
+          s << "\n";
+
+          // vn
+          for(int row = 0; row < model->rowCount(); row++)
+          {
+
+            
+float nx = model->data(model->index(row, normalColStart),   Qt::DisplayRole).toString().trimmed().toFloat();
+float ny = model->data(model->index(row, normalColStart+1), Qt::DisplayRole).toString().trimmed().toFloat();
+float nz = model->data(model->index(row, normalColStart+2), Qt::DisplayRole).toString().trimmed().toFloat();
+// same transform as position
+s << "vn " << -nx << " " << nz << " " << ny << "\n";
+
+            // s << "vn ";
+            // for(int col = normalColStart; col <= normalColStart+2; col++)
+            // {
+
+            //   QList<QString> lines =
+            //       model->data(model->index(row, col), Qt::DisplayRole).toString().split(lit("\n"));
+            //   bool quote = (lines.count() > 1);
+            //   if(quote)
+            //     s << "\"";
+            //   for(int l = 0; l < lines.count(); l++)
+            //   {
+            //     s << lines[l].trimmed();
+            //     if(l + 1 < lines.size())
+            //       s << "\n";
+            //   }
+            //   if(quote)
+            //     s << "\"";
+
+            //   if(col<normalColStart+2)
+            //     s << " ";
+            // }
+
+            // s << "\n";
+          }
+
+          s << "\n";
+          // vt
+          for(int row = 0; row < model->rowCount(); row++)
+          {
+float tu = model->data(model->index(row, uvColStart),   Qt::DisplayRole).toString().trimmed().toFloat();
+float tv = model->data(model->index(row, uvColStart+1), Qt::DisplayRole).toString().trimmed().toFloat();
+// flip V
+s << "vt " << tu << " " << (1.0f-tv) << "\n";
+
+
+
+            //             s << "vt ";
+            // for(int col = uvColStart; col <= uvColStart+1; col++)
+            // {
+
+            //   QList<QString> lines =
+            //       model->data(model->index(row, col), Qt::DisplayRole).toString().split(lit("\n"));
+            //   bool quote = (lines.count() > 1);
+            //   if(quote)
+            //     s << "\"";
+            //   for(int l = 0; l < lines.count(); l++)
+            //   {
+            //     s << lines[l].trimmed();
+            //     if(l + 1 < lines.size())
+            //       s << "\n";
+            //   }
+            //   if(quote)
+            //     s << "\"";
+
+            //   if(col<uvColStart+1)
+            //     s << " ";
+            // }
+
+            // s << "\n";
+          }
+
+          s << "\n";
+          s << "# Faces (triangles)\n";
+
+          for (int i=1;i<=model->rowCount();i+=3)
+          {
+            //f 1/1/1 2/2/2 3/3/3
+            s <<"f "<< 
+                 i<<"/"<<i<<"/"<<i<<" "<<
+                (i+1)<<"/"<<(i+1)<<"/"<<(i+1)<<" "<<
+                (i+2)<<"/"<<(i+2)<<"/"<<(i+2)<<"\n";
+
+
+                //         s <<"f "<< 
+                //  i<<"/"<<i<<" "<<
+                // (i+1)<<"/"<<(i+1)<<" "<<
+                // (i+2)<<"/"<<(i+2)<<"\n";
+          }
+
+
+        }
+        else
+        {
+          // write 64k rows at a time
+          ResourceId buff = m_BufferID;
+          const uint64_t maxChunkSize = 64 * 1024 * config.buffers[0]->stride;
+          for(uint64_t byteOffset = m_ByteOffset; byteOffset < m_ByteSize; byteOffset += maxChunkSize)
+          {
+            uint64_t chunkSize = qMin(m_ByteSize - byteOffset, maxChunkSize);
+
+            // it's fine to block invoke, because this is on the export thread
+            m_Ctx.Replay().BlockInvoke(
+                [buff, &s, &config, byteOffset, chunkSize](IReplayController *controller) {
+                  // cache column data for the inner loop
+                  QVector<CachedElData> cache;
+
+                  BufferData bufferData;
+
+                  bufferData.storage = controller->GetBufferData(buff, byteOffset, chunkSize);
+                  bufferData.stride = config.buffers[0]->stride;
+
+                  size_t numRows =
+                      (bufferData.storage.size() + bufferData.stride - 1) / bufferData.stride;
+                  size_t rowOffset = byteOffset / bufferData.stride;
+
+                  CacheDataForIteration(cache, config.columns, config.props, {&bufferData}, 0);
+
+                  // go row by row, finding the start of the row and dumping out the elements using
+                  // their
+                  // offset and sizes
+                  for(size_t idx = 0; idx < numRows; idx++)
+                  {
+                    s << (rowOffset + idx) << ", ";
+
+                    for(int col = 0; col < cache.count(); col++)
+                    {
+                      const CachedElData &d = cache[col];
+                      const ShaderConstant *el = d.el;
+                      const BufferElementProperties *prop = d.prop;
+
+                      if(d.data)
+                      {
+                        const byte *data = d.data;
+                        const byte *end = d.end;
+
+                        data += d.stride * idx;
+
+                        // only slightly wasteful, we need to fetch all variants together
+                        // since some formats are packed and can't be read individually
+                        QVariantList list = GetVariants(prop->format, *el, data, end);
+
+                        if(el->type.rows > 1)
+                        {
+                          for(int c = 0; c < el->type.columns; c++)
+                          {
+                            s << "\"";
+                            for(int r = 0; r < el->type.rows; r++)
+                            {
+                              if(list.empty())
+                              {
+                                s << "---";
+                              }
+                              else
+                              {
+                                int el_idx = r * el->type.columns + c;
+                                s << interpretVariant(list[el_idx], *el, *prop).trimmed();
+                              }
+
+                              if(r + 1 < el->type.rows)
+                                s << "\n";
+                            }
+                            s << "\", ";
+                          }
+                        }
+                        else if(list.empty())
+                        {
+                          for(int v = 0; v < d.numColumns; v++)
+                          {
+                            s << "---";
+
+                            if(v + 1 < d.numColumns)
+                              s << ", ";
+                          }
+                        }
+                        else
+                        {
+                          for(int v = 0; v < list.count(); v++)
+                          {
+                            s << interpretVariant(list[v], *el, *prop);
+
+                            if(v + 1 < list.count())
+                              s << ", ";
+                          }
+                        }
+
+                        if(col + 1 < cache.count())
+                          s << ", ";
+                      }
+                    }
+
+                    s << "\n";
+                  }
+                });
+          }
+        }
+      }
+
+      f->close();
+
+      delete f;
+    });
+    exportThread->start();
+
+    ShowProgressDialog(this, tr("Exporting data"),
+                       [exportThread]() { return !exportThread->isRunning(); });
+
+    exportThread->deleteLater();
+  }
+  else if(m_CurFixed)
+  {
+    if(params.format == BufferExport::RawBytes)
+    {
+      BufferItemModel *model = (BufferItemModel *)ui->inTable->model();
+      const BufferConfiguration &config = model->getConfig();
+
+      size_t byteSize = 0;
+
+      if(!config.fixedVars.type.members.empty())
+        byteSize = BufferFormatter::GetVarAdvance(config.packing, config.fixedVars);
+
+      const bytebuf &bufdata = config.buffers[0]->storage;
+
+      f->write((const char *)bufdata.data(), qMin(bufdata.size(), byteSize));
+
+      // if the buffer wasn't large enough for the variables, fill with 0s
+      if(byteSize > bufdata.size())
+      {
+        QByteArray nulls;
+        nulls.resize(int(byteSize - config.buffers[0]->storage.size()));
+        f->write(nulls);
+      }
+    }
+    else if(params.format == BufferExport::OBJ)
     {
       QTextStream ts(f);
 
