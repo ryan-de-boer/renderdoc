@@ -33,6 +33,15 @@
 #include "vk_shader_cache.h"
 #include <iostream>
 
+//extern float g_someMatrix[16];
+//extern bool g_someMatrixSet;
+
+// extern "C" {
+//     void SetCustomMatrix(float* m);
+//     bool GetCustomMatrixSet();
+//     float* GetCustomMatrix();
+// }
+
 #define VULKAN 1
 #include "data/glsl/glsl_ubos_cpp.h"
 
@@ -677,6 +686,7 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &seco
   Matrix4f ModelViewProj = projMat.Mul(camMat.Mul(axisMapMat));
   Matrix4f guessProjInv;
 
+  std::cout << "99 before unproject" << std::endl;
   if(cfg.position.unproject)
   {
     // the derivation of the projection matrix might not be right (hell, it could be an
@@ -699,6 +709,27 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &seco
     guessProjInv = guessProj.Inverse();
 
     ModelViewProj = projMat.Mul(camMat.Mul(guessProjInv));
+
+    // Matrix4f mv = camMat.Mul(guessProjInv);
+    // float* someMatrix = cfg.customMatrix;
+    // for (int i=0;i<16;++i)
+    // {
+    // someMatrix[i] = mv.Data()[i];
+    // }
+    // RenderDoc::Inst().SetSomeMatrixSet(true);
+
+//  GetResourceManager()->
+//    m_ResourceManager->SetInternalName(id, "MY_MATRIX:1.0,0.0,0.0...")
+
+    Matrix4f mv = camMat.Mul(guessProjInv);    
+    std::cout << "99 CUST ";
+    for (int i=0;i<16;++i)
+    {
+      cfg.customMatrix[i] = mv.Data()[i];
+      std::cout << cfg.customMatrix[i] << ", ";
+    }
+    std::cout << std::endl;
+    cfg.customMatrixSet = true;
   }
 
   // can't support secondary shading without a buffer - no pipeline will have been created

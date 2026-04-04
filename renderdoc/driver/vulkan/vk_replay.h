@@ -427,6 +427,22 @@ public:
   void RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &secondaryDraws,
                   const MeshDisplay &cfg);
 
+
+  float m_someMatrixA[16];
+  bool m_someMatrixSetA = false;
+
+    float GetCustomMatrixSet() {return m_someMatrixSetA;}
+  float* GetCustomMatrix() {return m_someMatrixA;}
+  void SetCustomMatrixSet(bool enable) {m_someMatrixSetA=enable;}
+  void SetCustomMatrix(float* value)
+  {
+    for (int i=0;i<16;++i)
+    {
+      m_someMatrixA[i] = value[i];
+    }
+  }
+
+
   rdcarray<ShaderEncoding> GetCustomShaderEncodings()
   {
     return {ShaderEncoding::SPIRV, ShaderEncoding::GLSL};

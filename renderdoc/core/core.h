@@ -425,6 +425,7 @@ public:
     bool is_y_flipped = true;
     uint32_t pitch_requirement = 0;
     uint32_t max_width = 0;
+
     FramePixels() {}
     ~FramePixels() { SAFE_DELETE_ARRAY(data); }
   };
@@ -644,6 +645,17 @@ public:
   bool HasTrackedFileData() const;
   rdcarray<rdcstr> GetTrackedFileNicknames() const;
 
+  float GetSomeMatrixSet() {return m_someMatrixSet;}
+  float* GetSomeMatrix() {return m_someMatrix;}
+  void SetSomeMatrixSet(bool enable) {m_someMatrixSet=enable;}
+  void SetSomeMatrix(float* value)
+  {
+    for (int i=0;i<16;++i)
+    {
+      m_someMatrix[i] = value[i];
+    }
+  }
+
   RDResult EmbedExternalFiles(RDCFile *rdc);
   RDResult RemoveExternalFiles(RDCFile *rdc);
   bool HasEmbeddedFiles(RDCFile *rdc) const;
@@ -780,6 +792,9 @@ private:
   SDObject *FindConfigSetting(const rdcstr &name);
 
   SDObject *m_Config = NULL;
+
+  float m_someMatrix[16];
+  bool m_someMatrixSet = false;
 };
 
 struct DriverRegistration

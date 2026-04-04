@@ -47,6 +47,43 @@
 
 #include "replay/renderdoc_serialise.inl"
 
+float g_someMatrix2[16];
+bool g_someMatrixSet2 = false;
+
+
+// These already exist in RenderDoc's exported symbols usually, 
+// but let's make sure they are visible.
+extern "C" __attribute__ ((visibility ("default"))) void SetRyanMatrix(float* m) {
+  for (int i=0;i<16;++i)
+  {
+    g_someMatrix2[i] = m[i];
+  }
+  g_someMatrixSet2 = true;
+}
+
+extern "C" __attribute__ ((visibility ("default"))) float* GetRyanMatrix() {
+    return g_someMatrix2;
+}
+extern "C" __attribute__ ((visibility ("default"))) bool GetRyanMatrixSet() {
+    return g_someMatrixSet2;
+}
+
+
+// Exported functions so the UI (EventBrowser) can see them
+extern "C" RENDERDOC_API void SetCustomMatrix(float* m) {
+  for (int i=0;i<16;++i)
+  {
+    g_someMatrix2[i] = m[i];
+  }
+  g_someMatrixSet2 = true;
+}
+extern "C" RENDERDOC_API bool GetCustomMatrixSet() {
+  return g_someMatrixSet2;
+}
+extern "C" RENDERDOC_API float* GetCustomMatrix() {
+  return g_someMatrix2;
+}
+
 extern "C" const rdcstr VulkanLayerJSONBasename = STRINGIZE(RDOC_BASE_NAME);
 
 RDOC_DEBUG_CONFIG(bool, Capture_Debug_SnapshotDiagnosticLog, false,

@@ -96,6 +96,8 @@ public:
   explicit BufferViewer(ICaptureContext &ctx, bool meshview, QWidget *parent = 0);
   ~BufferViewer();
 
+  const MeshDisplay &GetMeshConfig() const { return m_Config; }
+
   const ProjectionGuessParameters &GetProjGuess() const { return m_ProjGuess; }
 
   static BufferViewer *HasCBufferView(ShaderStage stage, uint32_t slot, uint32_t idx);

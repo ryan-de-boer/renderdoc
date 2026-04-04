@@ -7148,6 +7148,11 @@ void BufferViewer::UI_UpdateGuessParameters()
   if(m_ProjGuess.farPlane > 0.0)
     m_Config.position.farPlane = m_ProjGuess.farPlane;
 
+
+    // m_ProjGuess.
+    //     Matrix4f mv =  ;
+    //     m_Flycam->camera()->getMatrix().Mul(guessProjInv);
+
   UpdateStageDataControls();
 
   INVOKE_MEMFN(RT_UpdateAndDisplay);

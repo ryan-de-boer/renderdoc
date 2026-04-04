@@ -27,6 +27,8 @@
 
 #include <algorithm>
 
+
+
 namespace ResourceIDGen
 {
 static int64_t globalIDCounter = 1;

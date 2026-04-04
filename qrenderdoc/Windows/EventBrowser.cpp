@@ -64,6 +64,44 @@
 #include "Windows/BufferViewer.h"
 #include "Windows/Dialogs/ProjectionGuessDialog.h"
 
+//#include <dlfcn.h> // For dlsym on Linux
+
+
+// extern "C" __attribute__ ((visibility ("default"))) void SetRyanMatrix(float* m);
+// extern "C" __attribute__ ((visibility ("default"))) float* GetRyanMatrix();
+// extern "C" __attribute__ ((visibility ("default"))) bool GetRyanMatrixSet();
+
+
+// typedef void (*SetCustomMatrixFn)(float* m);
+// typedef bool (*GetCustomMatrixSetFn)();
+// typedef float* (*GetCustomMatrixFn)();
+
+// extern "C" RENDERDOC_API void SetCustomMatrix(float* m) {
+//   for (int i=0;i<16;++i)
+//   {
+//     g_someMatrix2[i] = m[i];
+//   }
+//   g_someMatrixSet2 = true;
+// }
+// extern "C" RENDERDOC_API bool GetCustomMatrixSet() {
+//   return g_someMatrixSet2;
+// }
+// extern "C" RENDERDOC_API float* GetCustomMatrix() 
+
+
+
+//#include "../../renderdoc/core/core.h"
+
+//extern float g_someMatrix[16];
+//extern bool g_someMatrixSet;
+
+// extern "C" {
+//     void SetCustomMatrix(float* m);
+//     bool GetCustomMatrixSet();
+//     float* GetCustomMatrix();
+// }
+
+
 struct EventBrowserPersistentStorage : public CustomPersistentStorage
 {
   EventBrowserPersistentStorage() : CustomPersistentStorage(rdcstr())
@@ -5680,7 +5718,27 @@ if(m_Ctx.HasMeshPreview())
     }
 }
 
+// float customMatrix[16] = {};
+// bool customMatrixSet = false;
+// if(m_Ctx.HasMeshPreview())
+// {
+//     BufferViewer *meshViewer = qobject_cast<BufferViewer *>(m_Ctx.GetMeshPreview()->Widget());
+//     if(meshViewer)
+//     {
+//         const MeshDisplay &config = meshViewer->GetMeshConfig();
+//         customMatrixSet = config.customMatrixSet;
+//         if (customMatrixSet)
+//           memcpy(customMatrix, config.customMatrix, sizeof(float)*16);
+//     }
+// }
 
+float customMatrix[16] = {
+    0.909555f, 0.0f, 0.0f,      0.0f,
+    0.0f,      1.0f, 0.0f,      0.0f,
+    0.0f,      0.0f, 0.0f,      0.251354f,
+    0.0f,      0.0f, 1.0f,      0.0f
+};
+bool customMatrixSet = true;
 
 
     m_Ctx.Replay().BlockInvoke([&](IReplayController *r) {
@@ -5910,6 +5968,7 @@ s << "# unproject=" << (int)posvs.unproject
 // if(ow != 0.0f) { ox/=ow; oy/=ow; oz/=ow; }
 
 
+/*
 float fovRad = fov * 3.14159265f / 180.0f;
 float S = 1.0f / std::tan(fovRad * 0.5f);
 float nearP = posvs.nearPlane;
@@ -5933,6 +5992,74 @@ auto mat4mul = [](const float m[16], float x, float y, float z, float w,
 float ox, oy, oz, ow;
 mat4mul(guessProjInv, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
 if(ow != 0.0f) { ox/=ow; oy/=ow; oz/=ow; }
+*/
+
+
+
+auto mat4mul = [](const float m[16], float x, float y, float z, float w,
+                  float &ox, float &oy, float &oz, float &ow)
+{
+    // result[row] = sum over cols of m[row + col*4] * v[col]
+    ox = m[0]*x + m[4]*y + m[8]*z  + m[12]*w;
+    oy = m[1]*x + m[5]*y + m[9]*z  + m[13]*w;
+    oz = m[2]*x + m[6]*y + m[10]*z + m[14]*w;
+    ow = m[3]*x + m[7]*y + m[11]*z + m[15]*w;
+};
+
+
+
+        float ox=-1, oy=-1, oz=-1, ow=-1;
+    if (customMatrixSet) {
+
+mat4mul(customMatrix, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
+//if(ow != 0.0f) { ox/=ow; oy/=ow; oz/=ow; }
+
+        // Now use myMatrix to transform your vertices!
+    } else {
+        // Fallback if the matrix hasn't been set yet
+          s << "# ERROR4 matrix not set\n";
+    }
+
+
+// // Look up the symbol in the current process (where librenderdoc is loaded)
+//     void* handle = dlopen(NULL, RTLD_LAZY); 
+//     GetCustomMatrixFn getMat = (GetCustomMatrixFn)dlsym(handle, "GetCustomMatrix");
+//     GetCustomMatrixSetFn getSet = (GetCustomMatrixSetFn)dlsym(handle, "GetCustomMatrixSet");
+
+//         float ox=-1, oy=-1, oz=-1, ow=-1;
+//     if (getMat && getSet) {
+
+// float* someMatrix = getMat();
+// if (getSet())
+// {
+// mat4mul(someMatrix, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
+// if(ow != 0.0f) { ox/=ow; oy/=ow; oz/=ow; }
+// }
+// else
+// {
+//   s << "# ERROR matrix not set\n";
+// }
+
+//         // Now use myMatrix to transform your vertices!
+//     } else {
+//         // Fallback if the matrix hasn't been set yet
+//           s << "# ERROR2 matrix not set\n";
+//     }
+    
+//     if(handle) dlclose(handle);
+
+
+// float ox, oy, oz, ow;
+// float* someMatrix = GetCustomMatrix();
+// if (GetCustomMatrixSet())
+// {
+// mat4mul(someMatrix, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
+// if(ow != 0.0f) { ox/=ow; oy/=ow; oz/=ow; }
+// }
+// else
+// {
+//   s << "# ERROR matrix not set\n";
+// }
 
 //s << "v " << -ox << " " << oz << " " << oy << "\n";
 
@@ -5964,7 +6091,11 @@ if(ow != 0.0f) { ox/=ow; oy/=ow; oz/=ow; }
 //                s << "#pos " << pos[0] << " " << pos[1] << " " << pos[2] << " " << pos[3] << "\n";
 //                s << "v " << -pos[0] << " " << pos[2] << " " << pos[1] << "\n";
 
-s << "v " << pos[0] << " " << pos[2] << " " << -pos[1] << "\n";
+//s << "v " << pos[0] << " " << pos[2] << " " << -pos[1] << "\n";
+
+               //s << "v " << ox << " " << oy << " " << oz << "\n";
+               s << "v " << -oz << " " << -oy << " " << -ox << "\n";
+
 
                 // UV at offset 16 (_output0, float4, first 2 floats are UV)
                 if(stride >= 24)
