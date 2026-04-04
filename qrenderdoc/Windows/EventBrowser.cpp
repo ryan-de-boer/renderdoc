@@ -57,6 +57,12 @@
 #include "scintilla/include/qt/ScintillaEdit.h"
 #include "ui_EventBrowser.h"
 #include <sstream>
+#include <iostream>
+//#include "../../renderdoc/maths/matrix.h"
+//#include "../../renderdoc/maths/camera.h"
+#include <cmath>
+#include "Windows/BufferViewer.h"
+#include "Windows/Dialogs/ProjectionGuessDialog.h"
 
 struct EventBrowserPersistentStorage : public CustomPersistentStorage
 {
@@ -5629,6 +5635,454 @@ void EventBrowser::events_keyPress(QKeyEvent *event)
 QModelIndex m_SelectStartIndex;
 QModelIndex m_SelectEndIndex;
 
+void EventBrowser::exportObjRange()
+{
+  uint32_t startEID = m_SelectStartIndex.data(ROLE_SELECTED_EID).toUInt();
+  uint32_t endEID = m_SelectEndIndex.data(ROLE_SELECTED_EID).toUInt();
+
+std::cout << "1 EXPORT RANGE TRIGGERED " << 
+  startEID << "-" << endEID << std::endl;
+
+  QString filter;
+  QString title;
+    filter = tr("OBJ Files (*.obj)");
+    title = tr("Export range to OBJ");
+
+  QString filename =
+      RDDialog::getSaveFileName(this, title, QString(), tr("%1;;All files (*)").arg(filter));
+
+    if(filename.isEmpty())
+      return;
+
+    QFile file(filename);
+    if(!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return;
+
+    QTextStream s(&file);
+    s << "# Exported from RenderDoc EID " << startEID << " to " << endEID << "\n";
+    s << "mtllib " << QFileInfo(filename).baseName() << ".mtl\n";
+    s << "usemtl material0\n\n";
+
+    int globalVertOffset = 1;  // OBJ is 1-indexed
+
+float fov = 90.0f;
+float aspect = 16.0f / 9.0f;
+
+if(m_Ctx.HasMeshPreview())
+{
+    BufferViewer *meshViewer = qobject_cast<BufferViewer *>(m_Ctx.GetMeshPreview()->Widget());
+    if(meshViewer)
+    {
+        const ProjectionGuessParameters &pg = meshViewer->GetProjGuess();
+        fov = pg.fov;
+        if(pg.aspect > 0.0f)
+            aspect = pg.aspect;
+    }
+}
+
+
+
+
+    m_Ctx.Replay().BlockInvoke([&](IReplayController *r) {
+
+        for(uint32_t eid = startEID; eid <= endEID; eid++)
+        {
+            r->SetFrameEvent(eid, false);
+
+// // Get WVP matrix from vertex shader constant buffer
+// const PipeState &pipeState = m_Ctx.CurPipelineState();
+// ResourceId pipeline = pipeState.GetGraphicsPipelineObject();
+// ResourceId shader = pipeState.GetShader(ShaderStage::Vertex);
+// rdcstr entryPoint = pipeState.GetShaderEntryPoint(ShaderStage::Vertex);
+// const ShaderReflection *refl = pipeState.GetShaderReflection(ShaderStage::Vertex);
+
+// float WVP[16] = {};
+// bool foundWVP = false;
+
+// if(refl && !refl->constantBlocks.isEmpty())
+// {
+//     for(const DescriptorAccess &access : r->GetDescriptorAccess())
+//     {
+//         if(access.stage != ShaderStage::Vertex ||
+//            access.type != DescriptorType::ConstantBuffer)
+//             continue;
+
+//         rdcarray<Descriptor> descs = r->GetDescriptors(
+//             access.descriptorStore,
+//             {{access.byteOffset, access.byteSize}});
+
+//         if(descs.isEmpty())
+//             continue;
+
+//         ResourceId cbufId = descs[0].resource;
+//         if(cbufId == ResourceId())
+//             continue;
+
+//         rdcarray<ShaderVariable> vars = r->GetCBufferVariableContents(
+//             pipeline, shader, ShaderStage::Vertex, entryPoint,
+//             0, cbufId, 0, 0);
+
+//         for(const ShaderVariable &v : vars)
+//         {
+//             if(v.rows == 4 && v.columns == 4)
+//             {
+//                 for(int i = 0; i < 16; i++)
+//                     WVP[i] = v.value.f32v[i];
+//                 foundWVP = true;
+//                 s << "# WVP: " << v.name.c_str() << "\n";
+//                 // print WVP for debugging
+//                 s << "# WVP matrix:\n";
+//                 for(int r2 = 0; r2 < 4; r2++)
+//                 {
+//                     s << "# ";
+//                     for(int c = 0; c < 4; c++)
+//                         s << WVP[r2*4+c] << " ";
+//                     s << "\n";
+//                 }
+//                 break;
+//             }
+//         }
+//         if(foundWVP) break;
+//     }
+// }
+
+
+
+            // Get VSOut post-transform data
+            MeshFormat posvs = r->GetPostVSData(0, 0, MeshDataStage::VSOut);
+
+s << "# unproject=" << (int)posvs.unproject 
+  << " nearPlane=" << posvs.nearPlane
+  << " farPlane=" << posvs.farPlane  
+//  << " fov=" << posvs.fov
+//  << " aspect=" << posvs.aspect
+  << " flipY=" << (int)posvs.flipY << "\n";
+
+            if(posvs.vertexResourceId == ResourceId())
+                continue;
+
+            // Get vertex buffer data
+            bytebuf vdata = r->GetBufferData(posvs.vertexResourceId, 
+                                              posvs.vertexByteOffset, 0);
+
+            if(vdata.empty())
+                continue;
+
+            uint32_t stride = posvs.vertexByteStride;
+            uint32_t numVerts = (uint32_t)(vdata.size() / stride);
+
+            s << "# EID " << eid << " numVerts=" << numVerts << "\n";
+
+            // Write vertices - unproject from clip space to world space
+            // VSOut positions are in clip space (homogeneous)
+            // We need to do perspective divide to get NDC, then unproject
+            for(uint32_t i = 0; i < numVerts; i++)
+            {
+                const byte *ptr = vdata.data() + i * stride;
+                const float *pos = (const float *)ptr;  // _sig32._child0 at offset 0, float4
+
+                float x = pos[0];
+                float y = pos[1];
+                float z = pos[2];
+                float w = pos[3];
+
+// Inside BlockInvoke where matrix.h is not needed
+// Unproject clip space position to view space manually
+// guessProj is a standard perspective matrix, its inverse is known analytically
+
+// float fov = posvs.fov * 3.14159f / 180.0f;  // degrees to radians
+// float aspect = posvs.aspect;
+// float nearP = posvs.nearPlane;
+// float farP = posvs.farPlane;
+
+
+
+// float fov = 90.0f * 3.14159f / 180.0f;  // default 90 degrees
+// float aspect = 16.0f / 9.0f;             // default widescreen
+// float nearP = posvs.nearPlane;
+// float farP = posvs.farPlane;
+
+// // perspective divide first (clip -> NDC)
+// //float w = pos[3];
+// float nx = (w != 0.0f) ? pos[0] / w : pos[0];
+// float ny = (w != 0.0f) ? pos[1] / w : pos[1];
+// float nz = (w != 0.0f) ? pos[2] / w : pos[2];
+
+// // unproject NDC to view space analytically (inverse perspective)
+// float tanHalfFov = tanf(fov * 0.5f);
+// float vx = nx * aspect * tanHalfFov;
+// float vy = ny * tanHalfFov;
+
+// // recover view space Z from NDC z
+// // for standard perspective: nz = (far*(z-near)) / (z*(far-near))
+// // solving for z: z = far*near / (far - nz*(far-near))
+// float vz = (farP * nearP) / (farP - nz * (farP - nearP));
+
+// // vx and vy are direction, scale by z
+// vx *= -vz;
+// vy *= -vz;
+
+
+
+// float nearP = posvs.farPlane;   // 4   (actual near in reverse Z)
+// float farP = posvs.nearPlane;   // 16379.5 (actual far in reverse Z)
+// bool reverseZ = (posvs.nearPlane > posvs.farPlane);
+
+// // perspective divide (clip -> NDC)
+// //float w = pos[3];
+// float nx = (w != 0.0f) ? pos[0] / w : pos[0];
+// float ny = (w != 0.0f) ? pos[1] / w : pos[1];
+// float nz = (w != 0.0f) ? pos[2] / w : pos[2];
+
+// if(reverseZ)
+//     nz = 1.0f - nz;  // flip Z for reverse Z
+
+// float fovRad = 90.0f * 3.14159f / 180.0f;
+// float aspect = 16.0f / 9.0f;
+// float tanHalfFov = std::tan(fovRad * 0.5f);
+
+// float vz = (farP * nearP) / (farP - nz * (farP - nearP));
+// float vx = nx * aspect * tanHalfFov * -vz;
+// float vy = ny * tanHalfFov * -vz;
+
+
+
+
+// // for each vertex:
+// float nearP = posvs.farPlane;  // reverse Z
+// float farP = posvs.nearPlane;
+
+// float fovRad = fov * 3.14159f / 180.0f;
+// float tanHalfFov = std::tan(fovRad * 0.5f);
+
+// //float w = pos[3];
+// float nx = (w != 0.0f) ? pos[0] / w : pos[0];
+// float ny = (w != 0.0f) ? pos[1] / w : pos[1];
+// float nz = (w != 0.0f) ? pos[2] / w : pos[2];
+
+// // reverse Z: flip nz
+// nz = 1.0f - nz;
+
+// float vz = (farP * nearP) / (farP - nz * (farP - nearP));
+// float vx = nx * aspect * tanHalfFov * -vz;
+// float vy = ny * tanHalfFov * -vz;
+
+
+
+// // Apply 4x4 matrix to vec4 (column major)
+// auto mat4mul = [](const float m[16], float x, float y, float z, float w,
+//                   float &ox, float &oy, float &oz, float &ow)
+// {
+//     ox = m[0]*x + m[4]*y + m[8]*z  + m[12]*w;
+//     oy = m[1]*x + m[5]*y + m[9]*z  + m[13]*w;
+//     oz = m[2]*x + m[6]*y + m[10]*z + m[14]*w;
+//     ow = m[3]*x + m[7]*y + m[11]*z + m[15]*w;
+// };
+
+// // Build reverse perspective matrix inverse analytically
+// // ReversePerspective(fov, near, aspect):
+// // [ f/aspect,  0,    0,     0    ]
+// // [    0,      f,    0,     0    ]  
+// // [    0,      0,    0,    -1    ]
+// // [    0,      0,   near,   0    ]
+// // where f = 1/tan(fov/2)
+// //
+// // Its inverse is:
+// // [ aspect/f,  0,     0,    0   ]
+// // [    0,     1/f,    0,    0   ]
+// // [    0,      0,     0,  1/near]
+// // [    0,      0,    -1,    0   ]
+
+// float fovRad = fov * 3.14159265f / 180.0f;
+// float f = 1.0f / std::tan(fovRad * 0.5f);
+// float nearP = posvs.nearPlane;  // for reverse Z, nearPlane is the large value
+
+// float guessProjInv[16] = {
+//     aspect/f, 0,     0,      0,
+//     0,        1.0f/f, 0,     0,
+//     0,        0,     0,     -1.0f,
+//     0,        0,     1.0f/nearP, 0
+// };
+
+// // Apply to each clip space vertex:
+// float ox, oy, oz, ow;
+// mat4mul(guessProjInv, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
+// if(ow != 0.0f) { ox/=ow; oy/=ow; oz/=ow; }
+
+
+float fovRad = fov * 3.14159265f / 180.0f;
+float S = 1.0f / std::tan(fovRad * 0.5f);
+float nearP = posvs.nearPlane;
+
+float guessProjInv[16] = {};
+guessProjInv[0]  = aspect/S;  // row0,col0
+guessProjInv[5]  = 1.0f/S;   // row1,col1
+guessProjInv[11] = 1.0f/nearP; // row3,col2
+guessProjInv[14] = 1.0f;      // row2,col3
+
+auto mat4mul = [](const float m[16], float x, float y, float z, float w,
+                  float &ox, float &oy, float &oz, float &ow)
+{
+    // result[row] = sum over cols of m[row + col*4] * v[col]
+    ox = m[0]*x + m[4]*y + m[8]*z  + m[12]*w;
+    oy = m[1]*x + m[5]*y + m[9]*z  + m[13]*w;
+    oz = m[2]*x + m[6]*y + m[10]*z + m[14]*w;
+    ow = m[3]*x + m[7]*y + m[11]*z + m[15]*w;
+};
+
+float ox, oy, oz, ow;
+mat4mul(guessProjInv, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
+if(ow != 0.0f) { ox/=ow; oy/=ow; oz/=ow; }
+
+//s << "v " << -ox << " " << oz << " " << oy << "\n";
+
+
+// coordinate swap for Blender
+//s << "v " << -ox << " " << oz << " " << oy << "\n";
+
+
+
+//s << "v " << -vx << " " << vz << " " << vy << "\n";
+
+
+
+//s << "v " << -vx << " " << vz << " " << vy << "\n";
+
+                // // perspective divide to get NDC
+                // if(w != 0.0f)
+                // {
+                //     x /= w;
+                //     y /= w;
+                //     z /= w;
+                // }
+                s << "#v_org " << pos[0] << " " << pos[1] << " " << pos[2] << "\n";
+
+                // swap Y/Z and negate X for blender coordinate system
+//                s << "v " << -x << " " << z << " " << y << "\n";
+//                s << "v " << -vx << " " << vz << " " << vy << "\n";
+//               s << "v " << -ox << " " << oz << " " << oy << "\n";
+//                s << "#pos " << pos[0] << " " << pos[1] << " " << pos[2] << " " << pos[3] << "\n";
+//                s << "v " << -pos[0] << " " << pos[2] << " " << pos[1] << "\n";
+
+s << "v " << pos[0] << " " << pos[2] << " " << -pos[1] << "\n";
+
+                // UV at offset 16 (_output0, float4, first 2 floats are UV)
+                if(stride >= 24)
+                {
+                    const float *uv = (const float *)(ptr + 16);
+                    s << "vt " << uv[0] << " " << (1.0f - uv[1]) << "\n";
+                }
+
+                // Normal at offset 16+16=32? check your VSOut layout
+                // _output1 at offset 32, float1 - might not be normal
+                // so we skip normals for VSOut for now
+            }
+
+            // Write faces using index buffer if available
+            if(posvs.indexResourceId != ResourceId() && posvs.indexByteStride > 0)
+            {
+                bytebuf idata = r->GetBufferData(posvs.indexResourceId,
+                                                  posvs.indexByteOffset, 0);
+                uint32_t numIndices = (uint32_t)(idata.size() / posvs.indexByteStride);
+
+                for(uint32_t i = 0; i + 2 < numIndices; i += 3)
+                {
+                    uint32_t i0, i1, i2;
+                    if(posvs.indexByteStride == 2)
+                    {
+                        const uint16_t *idx = (const uint16_t *)idata.data();
+                        i0 = idx[i]; i1 = idx[i+1]; i2 = idx[i+2];
+                    }
+                    else
+                    {
+                        const uint32_t *idx = (const uint32_t *)idata.data();
+                        i0 = idx[i]; i1 = idx[i+1]; i2 = idx[i+2];
+                    }
+                    int g0 = globalVertOffset + i0;
+                    int g1 = globalVertOffset + i1;
+                    int g2 = globalVertOffset + i2;
+                    s << "f " << g0 << "/" << g0 << " "
+                              << g1 << "/" << g1 << " "
+                              << g2 << "/" << g2 << "\n";
+                }
+            }
+            else
+            {
+                // no index buffer, sequential triangles
+                for(uint32_t i = 0; i + 2 < numVerts; i += 3)
+                {
+                    int g0 = globalVertOffset + i;
+                    int g1 = globalVertOffset + i + 1;
+                    int g2 = globalVertOffset + i + 2;
+                    s << "f " << g0 << "/" << g0 << " "
+                              << g1 << "/" << g1 << " "
+                              << g2 << "/" << g2 << "\n";
+                }
+            }
+
+            globalVertOffset += numVerts;
+        }
+
+        // restore original EID
+        r->SetFrameEvent(m_Ctx.CurEvent(), true);
+    });
+
+    file.close();
+
+    // Save MTL
+    QString mtlFilename = filename.left(filename.length() - 4) + lit(".mtl");
+    QFile mtlFile(mtlFilename);
+    if(mtlFile.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QTextStream m(&mtlFile);
+        m << "newmtl material0\n";
+        m << "Ka 1.0 1.0 1.0\n";
+        m << "Kd 1.0 1.0 1.0\n";
+        m << "Ks 0.0 0.0 0.0\n";
+        m << "map_Kd " << QFileInfo(filename).baseName() << ".png\n";
+        m << "map_d " << QFileInfo(filename).baseName() << ".png\n";
+        mtlFile.close();
+    }
+}
+
+// void EventBrowser::exportObjRangeONE()
+// {
+//   uint32_t startEid = m_SelectStartIndex.data(ROLE_SELECTED_EID).toUInt();
+//   uint32_t endEid = m_SelectEndIndex.data(ROLE_SELECTED_EID).toUInt();
+
+// std::cout << "EXPORT RANGE TRIGGERED " << 
+//   startEid << "-" << endEid << std::endl;
+
+//   QString filter;
+//   QString title;
+//     filter = tr("OBJ Files (*.obj)");
+//     title = tr("Export range to OBJ");
+
+//   QString filename =
+//       RDDialog::getSaveFileName(this, title, QString(), tr("%1;;All files (*)").arg(filter));
+
+//   if(filename.isEmpty())
+//     return;
+
+//   QFile *f = new QFile(filename);
+
+//   QIODevice::OpenMode flags = QIODevice::WriteOnly | QFile::Truncate;
+
+//     flags |= QIODevice::Text;
+
+//   if(!f->open(flags))
+//   {
+//     delete f;
+//     RDDialog::critical(this, tr("Error exporting file"),
+//                        tr("Couldn't open file '%1' for writing").arg(filename));
+//     return;
+//   }
+
+
+
+
+// }
+
 void EventBrowser::events_contextMenu(const QPoint &pos)
 {
   QModelIndex index = ui->events->indexAt(pos);
@@ -5639,8 +6093,9 @@ void EventBrowser::events_contextMenu(const QPoint &pos)
   QAction collapseAll(tr("&Collapse All"), this);
   QAction toggleBookmark(tr("Toggle &Bookmark"), this);
   QAction selectCols(tr("&Select Columns..."), this);
-  QAction selectStart(tr("Select Start Export OBJs"), this);
-  QAction selectEnd(tr("Select End Export OBJs"), this);
+  QAction selectStart(tr("Select Start: (none)"), this);
+  QAction selectEnd(tr("Select End: (none)"), this);
+  QAction exportObjRangeMenu(tr("Export OBJ range"), this);
   QAction rgpSelect(tr("Select &RGP Event"), this);
   rgpSelect.setIcon(Icons::connect());
 
@@ -5650,6 +6105,8 @@ void EventBrowser::events_contextMenu(const QPoint &pos)
   contextMenu.addAction(&selectCols);
   contextMenu.addAction(&selectStart);
   contextMenu.addAction(&selectEnd);
+  contextMenu.addAction(&exportObjRangeMenu);
+  
 
   expandAll.setIcon(Icons::arrow_out());
   collapseAll.setIcon(Icons::arrow_in());
@@ -5715,6 +6172,13 @@ void EventBrowser::events_contextMenu(const QPoint &pos)
   QObject::connect(&selectEnd, &QAction::triggered,
                     [this, index, &selectEnd]() { 
                       m_SelectEndIndex = index;
+                   });
+
+  QObject::connect(&exportObjRangeMenu, &QAction::triggered,
+                    [this, index, &exportObjRangeMenu]() { 
+
+                      exportObjRange();
+
                    });
 
   IRGPInterop *rgp = m_Ctx.GetRGPInterop();

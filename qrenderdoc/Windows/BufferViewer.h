@@ -96,6 +96,8 @@ public:
   explicit BufferViewer(ICaptureContext &ctx, bool meshview, QWidget *parent = 0);
   ~BufferViewer();
 
+  const ProjectionGuessParameters &GetProjGuess() const { return m_ProjGuess; }
+
   static BufferViewer *HasCBufferView(ShaderStage stage, uint32_t slot, uint32_t idx);
   static BufferViewer *GetFirstCBufferView(BufferViewer *exclude);
   bool IsCBufferView() const { return m_CBufferSlot.stage != ShaderStage::Count; }
@@ -169,6 +171,7 @@ private slots:
   void updateExportActionNames();
   void exportData(const BufferExport &params);
   void exportOBJ(const BufferExport &params);
+
   void debugVertex();
   void debugMeshThread();
   void meshDebugSelector_beginDebug(const rdcfixedarray<uint32_t, 3> &group,

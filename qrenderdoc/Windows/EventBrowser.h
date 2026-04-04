@@ -190,6 +190,7 @@ private slots:
   void events_contextMenu(const QPoint &pos);
   void events_currentChanged(const QModelIndex &current, const QModelIndex &previous);
   void locationEdit_clicked();
+  void exportObjRange();
   void location_leave();
   void location_keyPress(QKeyEvent *e);
 
