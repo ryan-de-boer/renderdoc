@@ -77,6 +77,19 @@ public:
   FloatVector GetUp();
   const Matrix4f GetMatrix();
 
+
+    virtual const float* GetCamMatrix()
+    {
+      Update();
+      for (int i=0;i<16;++i)
+      {
+        matf[i] = mat[i];
+      }
+      return matf;
+    }
+
+
+
 private:
   void Update();
 
@@ -84,6 +97,7 @@ private:
 
   bool dirty;
   Matrix4f mat, basis;
+  float matf[16];
 
   float m_Near = 0.1f, m_Far = 100000.0f;
 

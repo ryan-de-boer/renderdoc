@@ -66,6 +66,10 @@ public:
   CaptureContext(PersistantConfig &cfg);
   ~CaptureContext();
 
+  virtual void SetCustomMatrix(float* m);;
+  virtual float* GetCustomMatrix();
+  virtual bool GetCustomMatrixSet();;
+
   void Begin(QString paramFilename, QString remoteHost, uint32_t remoteIdent, bool temp,
              QString scriptFilename);
   bool isRunning();

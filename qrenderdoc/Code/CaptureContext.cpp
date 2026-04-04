@@ -68,6 +68,20 @@
 
 #include "pipestate.inl"
 
+float m_CustomMatrix[16] = {};
+bool m_CustomMatrixSet = false;
+void CaptureContext::SetCustomMatrix(float* m) 
+{ 
+  for (int i=0;i<16;++i)
+  {
+    m_CustomMatrix[i] = m[i];
+  }
+  m_CustomMatrixSet = true;
+}
+float* CaptureContext::GetCustomMatrix() { return m_CustomMatrix; }
+
+bool CaptureContext::GetCustomMatrixSet() { return m_CustomMatrixSet; }
+
 CaptureContext::CaptureContext(PersistantConfig &cfg) : m_Config(cfg)
 {
   RENDERDOC_PROFILEFUNCTION();

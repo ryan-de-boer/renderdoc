@@ -449,6 +449,25 @@ struct CaptureContextInvoker : ObjectForwarder<ICaptureContext>
     m_Ext = new ExtensionInvoker(shell, obj.Extensions());
   }
   virtual ~CaptureContextInvoker() { delete m_Ext; }
+
+  float mat[16] = {};
+  bool matSet = false;
+  virtual void SetCustomMatrix(float* m) {
+    for (int i=0;i<16;++i)
+    {
+      mat[i] = m[i];
+    }
+    matSet = true;
+  }
+  virtual float* GetCustomMatrix()
+  {
+    return mat;
+  }
+  virtual bool GetCustomMatrixSet()
+  {
+    return matSet;
+  }
+
   //
   ///////////////////////////////////////////////////////////////////////
   // pass-through functions that don't need the UI thread

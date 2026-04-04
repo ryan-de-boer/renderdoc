@@ -5741,6 +5741,32 @@ float customMatrix[16] = {
 bool customMatrixSet = true;
 
 
+float customMatrix2[16];
+bool customMatrixSet2 = false;
+if(m_Ctx.HasMeshPreview())
+{
+    BufferViewer *meshViewer = qobject_cast<BufferViewer *>(m_Ctx.GetMeshPreview()->Widget());
+    if(meshViewer && meshViewer->GetMeshConfig().customMatrixSet)
+    {
+        memcpy(customMatrix2, meshViewer->GetMeshConfig().customMatrix, sizeof(float)*16);
+        customMatrixSet2 = meshViewer->GetMeshConfig().customMatrixSet;
+    }
+}
+if (customMatrixSet2)
+{
+    std::cout << "100 EVENTBROWSER ";
+    for (int i=0;i<16;++i)
+    {
+      std::cout << customMatrix2[i] << ", ";
+    }
+    std::cout << std::endl;
+}
+else
+{
+    std::cout << "100 EVENTBROWSER NOT SET" << std::endl;
+}
+
+
     m_Ctx.Replay().BlockInvoke([&](IReplayController *r) {
 
         for(uint32_t eid = startEID; eid <= endEID; eid++)
@@ -6009,9 +6035,9 @@ auto mat4mul = [](const float m[16], float x, float y, float z, float w,
 
 
         float ox=-1, oy=-1, oz=-1, ow=-1;
-    if (customMatrixSet) {
+    if (customMatrixSet2) {
 
-mat4mul(customMatrix, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
+mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
 //if(ow != 0.0f) { ox/=ow; oy/=ow; oz/=ow; }
 
         // Now use myMatrix to transform your vertices!
@@ -6094,7 +6120,7 @@ mat4mul(customMatrix, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
 //s << "v " << pos[0] << " " << pos[2] << " " << -pos[1] << "\n";
 
                //s << "v " << ox << " " << oy << " " << oz << "\n";
-               s << "v " << -oz << " " << -oy << " " << -ox << "\n";
+               s << "v " << -oz << " " << -oy << " " << -ox << "\n"; //blender fix
 
 
                 // UV at offset 16 (_output0, float4, first 2 floats are UV)

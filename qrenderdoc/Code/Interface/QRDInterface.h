@@ -1898,6 +1898,10 @@ DECLARE_REFLECTION_STRUCT(IRGPInterop);
 DOCUMENT("The capture context that the python script is running in.")
 struct ICaptureContext
 {
+  virtual void SetCustomMatrix(float* m) = 0;
+  virtual float* GetCustomMatrix() = 0;
+  virtual bool GetCustomMatrixSet() = 0;
+
   DOCUMENT(R"(Retrieve the absolute path where a given temporary capture should be stored.
 data.
 

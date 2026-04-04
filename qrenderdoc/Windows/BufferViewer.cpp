@@ -54,7 +54,9 @@
 #include <cstdint>
 //#include "../../renderdoc/replay/renderdoc_replay.h"  // for ReplayCreateReplayDevice
 //#include "../../qrenderdoc/Windows/BufferViewer.h"    // for BoundVBuffer, rdcarray
-#include "/home/ryan-de-boer/renderdoc_src/renderdoc/renderdoc/api/replay/data_types.h"
+//#include "/home/ryan-de-boer/renderdoc_src/renderdoc/renderdoc/api/replay/data_types.h"
+
+#include "/home/ryan-de-boer/renderdoc_src/renderdoc/renderdoc/maths/matrix_min.cpp"
 
 // void BufferViewer::PrintFirst5UVs(ICaptureContext &m_Ctx)
 // {
@@ -3460,6 +3462,44 @@ void BufferViewer::OnEventChanged(uint32_t eventId)
 
     if(m_ProjGuess.aspect > 0.0)
       m_Config.aspect = m_ProjGuess.aspect;
+
+    std::cout << "101 setting in bufferviewer\n";
+
+//    Matrix4f camMat = ((Camera *)m_Flycam->camera)->GetMatrix();
+
+const float* camMatF = m_Flycam->camera()->GetCamMatrix();
+    MMatrix4f camMat;
+    for (int i=0;i<16;++i)
+    {
+      camMat[i] = camMatF[i];
+    }
+
+    MMatrix4f guessProj =
+        m_Config.position.farPlane != FLT_MAX
+            ? MMatrix4f::Perspective(m_Config.fov, m_Config.position.nearPlane, m_Config.position.farPlane, m_Config.aspect)
+            : MMatrix4f::ReversePerspective(m_Config.fov, m_Config.position.nearPlane, m_Config.aspect);
+
+    if(m_Config.ortho)
+    {
+      guessProj = MMatrix4f::Orthographic(m_Config.position.nearPlane, m_Config.position.farPlane);
+    }
+
+    if(m_Config.position.flipY)
+    {
+      guessProj[5] *= -1.0f;
+    }
+
+    MMatrix4f guessProjInv = guessProj.Inverse();
+
+    MMatrix4f mv = camMat.Mul(guessProjInv);
+
+    for (int i=0;i<16;++i)
+    {
+      m_Config.customMatrix[i] = mv[i];
+    }
+    m_Config.customMatrixSet = true;
+
+
   }
   else
   {

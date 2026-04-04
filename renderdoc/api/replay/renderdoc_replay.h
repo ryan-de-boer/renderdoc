@@ -1789,6 +1789,8 @@ DOCUMENT(R"(A handle to a camera controller, used for user interaction and contr
 )")
 struct ICamera
 {
+  virtual const float* GetCamMatrix() = 0;
+
   DOCUMENT("Closes the camera handle.");
   virtual void Shutdown() = 0;
 
