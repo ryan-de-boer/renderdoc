@@ -91,8 +91,8 @@ lighting = lighting * 0.7 + Mesh.ambient;
 color_out = vec4(texColor.xyz * lighting, texColor.w);
 
     // debug: show UVs as RG colour - should show red/green gradient if UVs are correct
-//    color_out = vec4(gsout_uv_binding.x, gsout_uv_binding.y, 0.0, 1.0);
-
+//   color_out = vec4(gsout_uv_binding.x, gsout_uv_binding.y, 0.0, 1.0);
+// color_out = vec4(1.0, 0.0, 0.0, 1.0);  // solid red
 
 //    vec3 lightDir = normalize(vec3(0, -0.3f, -1));
 

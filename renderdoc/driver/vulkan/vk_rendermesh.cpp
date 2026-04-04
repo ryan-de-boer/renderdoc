@@ -54,12 +54,18 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
                                                                      const MeshFormat &primary,
                                                                      const MeshFormat &secondary,
                                                                     uint32_t uvByteOffset = 0,
-                                                                  uint32_t uvFormat = 103/*VK_FORMAT_R32G32_SFLOAT*/)
+                                                                  uint32_t uvFormat = 103/*VK_FORMAT_R32G32_SFLOAT*/,
+                                                                uint32_t uvBinding = 0)
 {
   if(uvFormat == 0)
     uvFormat = 103;  // default to float32
 
-  std::cout << "20_CacheMeshDisplayPipelines uvByteOffset="<< uvByteOffset<<" uvFormat="<<uvFormat<<" stride=" << primary.vertexByteStride << std::endl;
+  std::cout << "20_CacheMeshDisplayPipelines uvByteOffset="<< 
+    uvByteOffset<<" uvFormat="<<uvFormat<<" stride=" << 
+    primary.vertexByteStride << std::endl;
+
+//  RDCLOG("uvBinding=%u uvByteOffset=%u uvFormat=%u stage=%d",
+//       cfg.uvBinding, cfg.uvByteOffset, cfg.uvFormat, (int)cfg.type);
 
   // generate a key to look up the map
   uint64_t key = 0;
@@ -79,6 +85,13 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
                               ? VK_FORMAT_UNDEFINED
                               : MakeVkFormat(secondary.format);
 
+std::cout << "27secondaryFmt=" << (uint32_t)secondaryFmt 
+          << " primary.vertexByteStride=" << primary.vertexByteStride
+          << " secondary.vertexByteStride=" << secondary.vertexByteStride
+          << " uvBinding=" << uvBinding
+          << " uvOffset=" << uvByteOffset
+          << " uvFormat=" << uvFormat << std::endl;                 
+
   RDCASSERT((uint32_t)primaryFmt <= 255 && (uint32_t)secondaryFmt <= 255, primaryFmt, secondaryFmt);
 
   key |= uint64_t((uint32_t)primaryFmt & 0xff) << bit;
@@ -87,16 +100,23 @@ VKMeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineL
   key |= uint64_t((uint32_t)secondaryFmt & 0xff) << bit;
   bit += 8;
 
-  RDCASSERT(primary.vertexByteStride <= 0xffff);
-  key |= uint64_t((uint32_t)primary.vertexByteStride & 0xffff) << bit;
-  bit += 16;
+//  RDCASSERT(primary.vertexByteStride <= 0xffff);
+//  key |= uint64_t((uint32_t)primary.vertexByteStride & 0xffff) << bit;
+// bit += 16;
+// primary stride - store as stride/4 in 8 bits (max stride 1020)
+key |= uint64_t((primary.vertexByteStride / 4) & 0xff) << bit;
+bit += 8;  // was 16, saves 8 bits  
 
-  if(secondary.vertexResourceId != ResourceId())
-  {
-    RDCASSERT(secondary.vertexByteStride <= 0xffff);
-    key |= uint64_t((uint32_t)secondary.vertexByteStride & 0xffff) << bit;
-  }
-  bit += 16;
+  // if(secondary.vertexResourceId != ResourceId())
+  // {
+  //   RDCASSERT(secondary.vertexByteStride <= 0xffff);
+  //   key |= uint64_t((uint32_t)secondary.vertexByteStride & 0xffff) << bit;
+  // }
+  // bit += 16;
+  // secondary stride - store as stride/4 in 8 bits
+if(secondary.vertexResourceId != ResourceId())
+    key |= uint64_t((secondary.vertexByteStride / 4) & 0xff) << bit;
+bit += 8;  // was 16, saves 8 bits
 
   if(primary.instanced)
     key |= 1ULL << bit;
@@ -165,11 +185,21 @@ bit += 8;
 */
 //was 76 (too much)
 
-// UV byte offset (3 bits: store offset/4, supports offsets 0,4,8,12,16,20,24,28)
-key |= uint64_t((uvByteOffset / 4) & 0x7) << bit;
-bit += 3;
+// // UV byte offset (3 bits: store offset/4, supports offsets 0,4,8,12,16,20,24,28)
+// key |= uint64_t((uvByteOffset / 4) & 0x7) << bit;
+// bit += 3;
 
 // UV format (1 bit: 0=float16, 1=float32)
+//key |= uint64_t(uvFormat == 103 ? 1ULL : 0ULL) << bit;
+//bit += 1;
+
+// encode uvBinding in top bit, uvByteOffset/4 in lower 3 bits = 4 bits total
+// replaces current 3 bits uvByteOffset + 1 bit uvFormat with 4 bits total
+uint32_t uvKey = ((uvBinding & 0x1) << 3) | ((uvByteOffset / 4) & 0x7);
+key |= uint64_t(uvKey) << bit;
+bit += 4;
+
+// uvFormat still 1 bit
 key |= uint64_t(uvFormat == 103 ? 1ULL : 0ULL) << bit;
 bit += 1;
 
@@ -180,6 +210,13 @@ std::cout << "11 bits: " << bit << std::endl;
   RDCASSERT(bit <= 64);
 
   VKMeshDisplayPipelines &cache = m_CachedMeshPipelines[key];
+
+  std::cout << "Cache key="<<(unsigned long long)key<<
+  " uvBinding="<<uvBinding<<
+  " uvByteOffset="<<uvByteOffset<<
+  std::endl;
+//  RDCLOG("Cache key=%llu uvBinding=%u uvByteOffset=%u", 
+//       (unsigned long long)key, uvBinding, uvByteOffset);
 
   if(cache.pipes[(uint32_t)Visualisation::NoSolid] != VK_NULL_HANDLE)
   {
@@ -232,7 +269,8 @@ std::cout << "11 bits: " << bit << std::endl;
 //{2, 0, (VkFormat)uvFormat, uvByteOffset}, //_inputN and crysis might have half float
 //{2, 0, VK_FORMAT_R16G16_SFLOAT, uvByteOffset}, //_inputN
 
-{2, 0, (VkFormat)uvFormat, uvByteOffset}, //_inputN
+//{2, 0, (VkFormat)uvFormat, uvByteOffset}, //_inputN
+{2, uvBinding, (VkFormat)uvFormat, uvByteOffset}, //_inputN
 //crysis? VK_FORMAT_R16G16_SFLOAT
 
   };
@@ -241,18 +279,27 @@ std::cout << "11 bits: " << bit << std::endl;
   {
     cache.primaryStridePadding = primaryStridePadding;
     vertAttrs[0].offset += primaryStridePadding;
-    vertAttrs[2].offset += primaryStridePadding;  // ADD THIS - UV must also account for padding
+
+    if(uvBinding == 0)
+        vertAttrs[2].offset += primaryStridePadding;  // UV also in primary buffer
+
+    // Don't adjust vertAttrs[2] - UV offset is absolute within vertex
+
+    // if(uvBinding == 0 && uvByteOffset == 0)
+    //     vertAttrs[2].offset += primaryStridePadding;  // UV from primary buffer, // ADD THIS - UV must also account for padding
   }
 
   if(secondary.vertexByteOffset > secondaryStridePadding)
   {
     cache.secondaryStridePadding = secondaryStridePadding;
     vertAttrs[1].offset += secondaryStridePadding;
+    if(uvBinding == 1)
+        vertAttrs[2].offset += secondaryStridePadding;  // UV also from secondary buffer
   }
 
 
 
-      std::cout << "4vertAttrs[2] binding="<<vertAttrs[2].binding<< " format=" << vertAttrs[2].format<< " offset=" << vertAttrs[2].offset << std::endl;
+      std::cout << "22vertAttrs[2] binding="<<vertAttrs[2].binding<< " format=" << vertAttrs[2].format<< " offset=" << vertAttrs[2].offset << std::endl;
 
 std::cout << "test1" << std::endl;
       // sanity check UV attribute fits within vertex
@@ -539,6 +586,15 @@ std::cout << "test4.2" << std::endl;
   }
 std::cout << "test4.3" << std::endl;
 
+
+if(primary.vertexByteStride == 48)
+    std::cout << "30 VSOut UV attr: binding=" << vertAttrs[2].binding 
+              << " offset=" << vertAttrs[2].offset
+              << " format=" << (uint32_t)vertAttrs[2].format
+              << " primaryStridePadding=" << primaryStridePadding
+              << std::endl;
+
+
   for(uint32_t i = 0; i < VKMeshDisplayPipelines::ePipe_Count; i++)
     if(cache.pipes[i] != VK_NULL_HANDLE)
       m_pDriver->GetResourceManager()->WrapResource(ResourceId(), Unwrap(m_Device), cache.pipes[i]);
@@ -786,8 +842,16 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &seco
     }
   }
 
+    std::cout << "21_Before CacheMeshDisplayPipelines" << 
+    " cfg.uvByteOffset="<< cfg.uvByteOffset<<
+    " cfg.uvBinding="<<cfg.uvBinding<<
+    " cfg.uvFormat="<<cfg.uvFormat<<
+    " stage="<<(int)cfg.type<<
+    std::endl;
+
+
   VKMeshDisplayPipelines cache = GetDebugManager()->CacheMeshDisplayPipelines(
-      m_MeshRender.PipeLayout, cfg.position, cfg.second, cfg.uvByteOffset, cfg.uvFormat);
+      m_MeshRender.PipeLayout, cfg.position, cfg.second, cfg.uvByteOffset, cfg.uvFormat, cfg.uvBinding);
 
   if(cfg.position.vertexResourceId != ResourceId())
   {
@@ -802,7 +866,17 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &seco
 
     offs -= cache.primaryStridePadding;
 
-    std::cout << "13pos bind: offs="<<(uint64_t)offs << " primaryStridePadding="<<cache.primaryStridePadding<<" vertexByteOffset="<<(uint64_t)cfg.position.vertexByteOffset<<" stride=" << cfg.position.vertexByteStride << std::endl;
+    std::cout << "23pos bind:"<<
+    " offs="<<(uint64_t)offs << 
+    " primaryStridePadding="<<cache.primaryStridePadding<<
+    " vertexByteOffset="<<(uint64_t)cfg.position.vertexByteOffset<<
+    " stride=" << cfg.position.vertexByteStride << std::endl;
+
+    std::cout << "23sec bind:"<<
+    " vertexByteStride="<<cfg.second.vertexByteStride<< 
+    " vertexByteOffset="<<(uint64_t)cfg.second.vertexByteOffset<<
+    " vertexResourceId="<<ToStr(cfg.second.vertexResourceId).c_str()<<
+    " cfg.uvBinding=" << cfg.uvBinding << std::endl;
 
     vt->CmdBindVertexBuffers(Unwrap(cmd), 0, 1, UnwrapPtr(vb), &offs);
   }
@@ -822,6 +896,14 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &seco
     offs -= cache.secondaryStridePadding;
 
   std::cout << "Binding pos buffer: offs="<<(uint64_t)offs<<" stride=" << cfg.position.vertexByteStride << " numIndices=" << cfg.position.numIndices << " uvByteOffset=" <<cfg.uvByteOffset << std::endl;
+
+  std::cout << "26PAD" <<
+  " secondaryStridePadding="<<cache.secondaryStridePadding<<
+  " offs before=" <<(uint64_t)(offs + cache.secondaryStridePadding) <<
+  " after=" << (uint64_t)offs << std::endl;
+//  RDCLOG("secondaryStridePadding=%u offs before=%llu after=%llu",
+//       cache.secondaryStridePadding, (uint64_t)(offs + cache.secondaryStridePadding), (uint64_t)offs);
+
 
 //  std::cout  << "TEXCOORD format details: compCount=" << (int)cfg.props[i].format.compCount
 //         << "compByteWidth=" << (int)cfg.props[i].format.compByteWidth << std::endl;

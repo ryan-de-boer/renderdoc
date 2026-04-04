@@ -333,6 +333,7 @@ struct MeshDisplay
 //  VkFormat uvFormat = VK_FORMAT_R32G32_SFLOAT; 
 uint32_t uvFormat = 0;
 float meshAmbient = 1.5;
+uint32_t uvBinding = 0;
 
   DOCUMENT(R"(The :class:`MeshDataStage` where this mesh data comes from.
 

@@ -5699,7 +5699,14 @@ std::cout << "Hello m_Config.visualisationMode: " <<(int)m_Config.visualisationM
 //       std::cout       << "compCount=" << (int)m_Config.second.format.compCount << std::endl;
 //   }
 
-const BufferConfiguration &cfg = m_ModelIn->getConfig();
+    BufferItemModel *model2 = nullptr;
+    switch(m_CurStage)
+    {
+        case MeshDataStage::VSIn:  model2 = m_ModelIn; break;
+        case MeshDataStage::VSOut: model2 = m_ModelOut1; break;
+        default: break;
+    }
+const BufferConfiguration &cfg = model2->getConfig();
 
    if(m_Config.visualisationMode == Visualisation::Textured)
    {
@@ -5710,9 +5717,12 @@ std::cout << "3second.baseVertex = "
           << m_Config.second.baseVertex << std::endl;
 
    }
+    std::cout << "H1" << std::endl;
 
    if(m_Config.visualisationMode == Visualisation::Textured)
 {
+      if(m_CurStage == MeshDataStage::VSIn)
+    {
     m_Config.second = m_Config.position;
 
   //  m_Config.second.vertexByteOffset = 24;
@@ -5723,7 +5733,34 @@ std::cout << "3second.baseVertex = "
     m_Config.second.format.type = ResourceFormatType::Regular;
 
     std::cout << "UV bound to same vertex stream as position" << std::endl;
+    }
+    else if(m_CurStage == MeshDataStage::VSOut)
+    {
+//         // fall back to VSIn UV data since VSOut doesn't have accessible UV semantics
+//         m_Config.second = m_InPosition;  // use VSIn vertex buffer
+//         m_Config.second.format.compCount = 2;
+//         m_Config.second.format.compType = CompType::Float;
+//         m_Config.second.format.compByteWidth = 4;
+//         m_Config.second.format.type = ResourceFormatType::Regular;
+
+//          // ADD THIS:
+// std::cout << "28 VSOut second resourceId valid=" << (m_Config.second.vertexResourceId != ResourceId())
+//           << " same as position=" << (m_Config.second.vertexResourceId == m_Config.position.vertexResourceId)
+//           << std::endl;
+
+    // Don't override m_Config.second - leave it as m_Out1Secondary
+    // Instead use primary buffer (VSOut) with _output0 offset for UVs
+    m_Config.uvByteOffset = 16;  // _output0 offset in VSOut buffer
+    m_Config.uvFormat = 103;     // R32G32_SFLOAT - reads first 2 floats of float4
+    m_Config.uvBinding = 0;      // read from primary (VSOut) buffer
+
+std::cout << "31 VSOut UV: binding=0 offset=16" << std::endl;
+    
+
+    }
+ 
 }
+    std::cout << "H2" << std::endl;
 
 //dont' gate on textured
 //if(m_Config.visualisationMode == Visualisation::Textured)
@@ -5735,6 +5772,7 @@ std::cout << "3second.baseVertex = "
         case MeshDataStage::VSOut: model = m_ModelOut1; break;
         default: break;
     }
+    model = m_ModelIn;
 
     if(model)
     {
@@ -5784,10 +5822,57 @@ else
         }
     }
 }
+    std::cout << "H3" << std::endl;
+Visualisation v = m_Config.visualisationMode;
+    std::cout << "H3.001" << std::endl;
+
+    if(m_CurStage == MeshDataStage::VSOut)
+{
+    const BufferConfiguration &out1Config = m_ModelOut1->getConfig();
+    for(int i = 0; i < out1Config.columns.count(); i++)
+    {
+        std::cout << "29 VSOut col " << i << ": " 
+                  << out1Config.columns[i].name.c_str()
+                  << " offset=" << out1Config.columns[i].byteOffset
+                  << " compCount=" << (int)out1Config.props[i].format.compCount
+                  << " compByteWidth=" << (int)out1Config.props[i].format.compByteWidth
+                  << std::endl;
+    }
+}
+
+if(m_Config.visualisationMode == Visualisation::Textured)
+{
+    std::cout << "H3.01" << std::endl;
+  if(m_CurStage == MeshDataStage::VSOut)
+{
+    std::cout << "H3.1" << std::endl;
+//    m_Config.uvBinding = 1;  // read UV from secondary binding ->no read from 0 now
+    m_Config.uvBinding = 0;  // read UV from secondary binding ->no read from 0 now
+    std::cout << "H3.2" << std::endl;
+    // m_Config.second is already set to VSIn position buffer with correct stride
+}
+else
+{
+    std::cout << "H3.02" << std::endl;
+    m_Config.uvBinding = 0;  // read UV from primary binding
+    std::cout << "H3.03" << std::endl;
+}
+    std::cout << "H4" << std::endl;
 
 
+    std::cout << "XCurStage=" << (int)m_CurStage << std::endl;
+    std::cout << "Xsecond.vertexResourceId valid=" << (m_Config.second.vertexResourceId != ResourceId()) << std::endl;
+    std::cout << "Xsecond.vertexByteStride=" << m_Config.second.vertexByteStride << std::endl;
+    std::cout << "Xsecond.vertexByteOffset=" << m_Config.second.vertexByteOffset << std::endl;
+    std::cout << "Xsecond.format.compCount=" << (int)m_Config.second.format.compCount << std::endl;
+    std::cout << "Xsecond.format.compByteWidth=" << (int)m_Config.second.format.compByteWidth << std::endl;
+    std::cout << "XuvByteOffset=" << m_Config.uvByteOffset << std::endl;
+    std::cout << "Xposition.vertexByteStride=" << m_Config.position.vertexByteStride << std::endl;
+    std::cout << "Xposition.vertexByteOffset=" << m_Config.position.vertexByteOffset << std::endl;
+}
 
 //11
+    std::cout << "H5" << std::endl;
 
 rdcarray<VertexInputAttribute> attribs = m_Ctx.CurPipelineState().GetVertexInputs();
 for(const VertexInputAttribute &a : attribs)
@@ -5795,6 +5880,7 @@ for(const VertexInputAttribute &a : attribs)
     printf("Attrib %s: offset=%u, format=%d\n", a.name.c_str(), a.byteOffset, (int)a.format.compType);
 //    this->m_ModelIn->setSecondaryColumn(2, true, false);
 }
+    std::cout << "H6" << std::endl;
 //11
 //22
 // // Find and assign the UV buffer as the secondary attribute for mesh display
@@ -5867,7 +5953,19 @@ for(const VertexInputAttribute &a : attribs)
 //   }
   //ttry again
 
+
+      std::cout << "H7" << std::endl;
+
 int posCol = m_ModelIn->posColumn();
+  if (posCol!=-1)
+  {
+    std::cout << "H8 posCol: " <<posCol << std::endl;
+    auto it3 = cfg.props;
+    std::cout << "H8.1" << std::endl;
+    auto it = cfg.props[posCol];
+    std::cout << "H9" << std::endl;
+    auto it2 = it.buffer;
+    std::cout << "H10" << std::endl;
 //int uvCol  = m_ModelIn->secondaryColumn();
 
 //m_ModelIn->setSecondaryColumn(1,true,false);
@@ -5875,7 +5973,8 @@ int posCol = m_ModelIn->posColumn();
 std::cout << "POSITION stream = " << cfg.props[posCol].buffer << std::endl;
 //std::cout << "UV stream = " << cfg.props[uvCol].buffer << std::endl;
 std::cout << "POSITION col = " << posCol << std::endl;
-//std::cout << "uv col = " << uvCol << std::endl;
+//std::cout << "uv col = " << uvCol << std::endl;    
+  }
 
 for(size_t i = 0; i < cfg.columns.size(); i++)
 {
@@ -6007,6 +6106,16 @@ if(firstTexture != ResourceId())
 //         }
 //     }
 // }
+
+
+// At the END of UpdateCurrentMeshConfig, after the UV detection loop:
+if(m_Config.visualisationMode == Visualisation::Textured && 
+   m_CurStage == MeshDataStage::VSOut)
+{
+    m_Config.uvByteOffset = 16;  // override with _output0 offset
+    m_Config.uvBinding = 0;
+    m_Config.uvFormat = 103;
+}
 
   UI_UpdateGuessParameters();
 

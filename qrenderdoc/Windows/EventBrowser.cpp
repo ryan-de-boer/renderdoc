@@ -56,6 +56,7 @@
 #include "flowlayout/FlowLayout.h"
 #include "scintilla/include/qt/ScintillaEdit.h"
 #include "ui_EventBrowser.h"
+#include <sstream>
 
 struct EventBrowserPersistentStorage : public CustomPersistentStorage
 {
@@ -5625,6 +5626,9 @@ void EventBrowser::events_keyPress(QKeyEvent *event)
   }
 }
 
+QModelIndex m_SelectStartIndex;
+QModelIndex m_SelectEndIndex;
+
 void EventBrowser::events_contextMenu(const QPoint &pos)
 {
   QModelIndex index = ui->events->indexAt(pos);
@@ -5635,6 +5639,8 @@ void EventBrowser::events_contextMenu(const QPoint &pos)
   QAction collapseAll(tr("&Collapse All"), this);
   QAction toggleBookmark(tr("Toggle &Bookmark"), this);
   QAction selectCols(tr("&Select Columns..."), this);
+  QAction selectStart(tr("Select Start Export OBJs"), this);
+  QAction selectEnd(tr("Select End Export OBJs"), this);
   QAction rgpSelect(tr("Select &RGP Event"), this);
   rgpSelect.setIcon(Icons::connect());
 
@@ -5642,15 +5648,21 @@ void EventBrowser::events_contextMenu(const QPoint &pos)
   contextMenu.addAction(&collapseAll);
   contextMenu.addAction(&toggleBookmark);
   contextMenu.addAction(&selectCols);
+  contextMenu.addAction(&selectStart);
+  contextMenu.addAction(&selectEnd);
 
   expandAll.setIcon(Icons::arrow_out());
   collapseAll.setIcon(Icons::arrow_in());
   toggleBookmark.setIcon(Icons::asterisk_orange());
   selectCols.setIcon(Icons::timeline_marker());
+  selectStart.setIcon(Icons::arrow_left());
+  selectEnd.setIcon(Icons::arrow_right());
 
   expandAll.setEnabled(index.isValid() && ui->events->model()->rowCount(index) > 0);
   collapseAll.setEnabled(expandAll.isEnabled());
   toggleBookmark.setEnabled(m_Ctx.IsCaptureLoaded());
+  selectStart.setEnabled(true);
+  selectEnd.setEnabled(true);
 
   QObject::connect(&expandAll, &QAction::triggered,
                    [this, index]() { ui->events->expandAll(index); });
@@ -5661,6 +5673,49 @@ void EventBrowser::events_contextMenu(const QPoint &pos)
   QObject::connect(&toggleBookmark, &QAction::triggered, this, &EventBrowser::on_bookmark_clicked);
 
   QObject::connect(&selectCols, &QAction::triggered, this, &EventBrowser::on_colSelect_clicked);
+
+  // QObject::connect(&selectStart, &QAction::triggered,
+  //                  [this, index, &selectStart]() { 
+  //                   std::stringstream b;
+  //                   b << "Select Start Export OBJs " << index.row();
+  //                   selectStart.setText(QString::fromStdString(b.str()));
+  //                 });
+
+  QObject::connect(&contextMenu, &QMenu::aboutToShow, [&selectStart, this]() {
+    if(m_SelectStartIndex.isValid())
+    {
+        // selectStart.setText(tr("Select Start: event %1").arg(
+        //     m_SelectStartIndex.data(Qt::DisplayRole).toString()));
+
+        uint32_t eid = m_SelectStartIndex.data(ROLE_SELECTED_EID).toUInt();
+        selectStart.setText(tr("Select Start: EID %1").arg(eid));
+    }
+    else    
+        selectStart.setText(tr("Select Start: (none)"));
+});
+
+  QObject::connect(&contextMenu, &QMenu::aboutToShow, [&selectEnd, this]() {
+    if(m_SelectEndIndex.isValid())
+    {
+        uint32_t eid = m_SelectEndIndex.data(ROLE_SELECTED_EID).toUInt();
+        selectEnd.setText(tr("Select End: EID %1").arg(eid));
+    }
+    else    
+        selectEnd.setText(tr("Select End: (none)"));
+});
+
+  QObject::connect(&selectStart, &QAction::triggered,
+                    [this, index, &selectStart]() { 
+                      m_SelectStartIndex = index;
+                     //std::stringstream b;
+//                    b << "Select Start Export OBJs " << index.row();
+                     //selectStart.setText(QString::fromStdString(b.str()));
+                   });
+
+  QObject::connect(&selectEnd, &QAction::triggered,
+                    [this, index, &selectEnd]() { 
+                      m_SelectEndIndex = index;
+                   });
 
   IRGPInterop *rgp = m_Ctx.GetRGPInterop();
   if(rgp && rgp->HasRGPEvent(m_Ctx.CurEvent()))
