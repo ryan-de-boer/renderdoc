@@ -5767,11 +5767,228 @@ else
 }
 
 
+// // Get SSBO world matrix BEFORE BlockInvoke (on UI thread)
+// ResourceId worldMatrixBufferId;
+// uint64_t worldMatrixByteOffset = 0;
+
+// const PipeState &uiPipeState = m_Ctx.CurPipelineState();
+
+// // check all stages for the SSBO
+// for(ShaderStage stage : {ShaderStage::Vertex, ShaderStage::Fragment, ShaderStage::Geometry})
+// {
+//     for(const UsedDescriptor &used : uiPipeState.GetReadOnlyResources(stage))
+//     {
+//         const Descriptor &d = used.descriptor;
+//         if(d.type != DescriptorType::Buffer && d.type != DescriptorType::ReadWriteBuffer)
+//             continue;
+//         if(d.resource == ResourceId())
+//             continue;
+//         // take first valid buffer found - we'll refine later
+//         worldMatrixBufferId = d.resource;
+//         worldMatrixByteOffset = d.byteOffset;
+//         break;
+//     }
+//     if(worldMatrixBufferId != ResourceId())
+//         break;
+        
+//     for(const UsedDescriptor &used : uiPipeState.GetReadWriteResources(stage))
+//     {
+//         const Descriptor &d = used.descriptor;
+//         if(d.resource == ResourceId())
+//             continue;
+//         worldMatrixBufferId = d.resource;
+//         worldMatrixByteOffset = d.byteOffset;
+//         break;
+//     }
+//     if(worldMatrixBufferId != ResourceId())
+//         break;
+// }
+
+const PipeState &uiPipeState = m_Ctx.CurPipelineState();
+
+
+// Get world matrix from SSBO at set 3, binding 0
+ResourceId worldBufferId;
+uint64_t worldBufferOffset = 0;
+bool foundWorldBuffer = false;
+
+const PipeState &uiState = m_Ctx.CurPipelineState();
+const ShaderReflection *refl = uiState.GetShaderReflection(ShaderStage::Vertex);
+
+if(refl)
+{
+   for(int i = 0; i < (int)refl->constantBlocks.size(); i++)
+    {
+        const ConstantBlock &cb = refl->constantBlocks[i];
+        std::cout << "CB" << i << " set=" << cb.fixedBindSetOrSpace 
+                 << " binding=" << cb.fixedBindNumber 
+                 << " name=" << cb.name.c_str()
+                 << " byteSize=" << cb.byteSize << "\n";
+    }
+}
+
+
+ResourceId uniforms21Id;
+uint64_t uniforms21Offset = 0;
+ResourceId cbPipeline = uiState.GetGraphicsPipelineObject();
+ResourceId cbShader = uiState.GetShader(ShaderStage::Vertex);
+rdcstr cbEntry = uiState.GetShaderEntryPoint(ShaderStage::Vertex);
+
+rdcarray<UsedDescriptor> cbs = uiState.GetConstantBlocks(ShaderStage::Vertex);
+for(const UsedDescriptor &ud : cbs)
+{
+    if(ud.access.index == 1)
+    {
+        uniforms21Id = ud.descriptor.resource;
+        uniforms21Offset = ud.descriptor.byteOffset;
+        break;
+    }
+}
+
+s << "# uniforms21Id valid=" << (uniforms21Id != ResourceId()) << "\n";
+s << "# uniforms21Offset=" << uniforms21Offset << "\n";
+s << "# cbPipeline valid=" << (cbPipeline != ResourceId()) << "\n";
+s << "# cbShader valid=" << (cbShader != ResourceId()) << "\n";
+s << "# cbEntry=" << cbEntry.c_str() << "\n";
+
+
     m_Ctx.Replay().BlockInvoke([&](IReplayController *r) {
 
         for(uint32_t eid = startEID; eid <= endEID; eid++)
         {
             r->SetFrameEvent(eid, false);
+
+            std::cout << "W1 \n";
+
+
+           if(uniforms21Id != ResourceId())
+{
+    bytebuf rawData = r->GetBufferData(uniforms21Id, uniforms21Offset, 108);
+    s << "# raw buffer size=" << rawData.size() << "\n";
+    if(rawData.size() >= 16)
+    {
+        const float *f = (const float *)rawData.data();
+        s << "# raw first 16 floats: ";
+        for(int i = 0; i < 16; i++)
+            s << f[i] << " ";
+        s << "\n";
+    }
+} 
+
+
+// if(uniforms21Id != ResourceId())
+// {
+//     rdcarray<ShaderVariable> vars = r->GetCBufferVariableContents(
+//         cbPipeline, cbShader, ShaderStage::Vertex, cbEntry,
+//         1, uniforms21Id, uniforms21Offset, 0);
+
+//     for(const ShaderVariable &v : vars)
+//     {
+//     s << "# var name=" << v.name.c_str() 
+//       << " rows=" << v.rows << " cols=" << v.columns 
+//       << " members=" << v.members.size() << "\n";
+    
+//     // print raw f32v values regardless of rows/cols
+//     s << "# raw: ";
+//     for(int i = 0; i < 16; i++)
+//         s << v.value.f32v[i] << " ";
+//     s << "\n";
+    
+//     for(const ShaderVariable &child : v.members)
+//     {
+//         s << "#  child=" << child.name.c_str() 
+//           << " rows=" << child.rows << " cols=" << child.columns
+//           << " members=" << child.members.size() << "\n";
+//         s << "#  raw: ";
+//         for(int i = 0; i < 16; i++)
+//             s << child.value.f32v[i] << " ";
+//         s << "\n";
+        
+//         for(const ShaderVariable &grandchild : child.members)
+//         {
+//             s << "#   grandchild=" << grandchild.name.c_str()
+//               << " rows=" << grandchild.rows << " cols=" << grandchild.columns << "\n";
+//             s << "#   raw: ";
+//             for(int i = 0; i < 16; i++)
+//                 s << grandchild.value.f32v[i] << " ";
+//             s << "\n";
+//         }
+//     }
+
+//     }
+// }
+
+
+
+
+// const PipeState &pipeState = r->GetPipelineState();
+
+// if(worldMatrixBufferId != ResourceId())
+// {
+//     bytebuf data = r->GetBufferData(worldMatrixBufferId, worldMatrixByteOffset, 64);
+//     if(data.size() >= 64)
+//     {
+//         const float *m = (const float *)data.data();
+//         s << "# World first4=" << m[0] << " " << m[1] << " " << m[2] << " " << m[3] << "\n";
+//         std::cout << "# World first4=" << m[0] << " " << m[1] << " " << m[2] << " " << m[3] << "\n";
+//     }
+// }
+
+            std::cout << "W10 \n";
+
+        //SaveTexture
+  // Save texture as PNG
+std::cout << "Sav1 \n";
+// Inside EventBrowser or where you have access to m_Ctx
+const PipeState &state = m_Ctx.CurPipelineState();
+std::cout << "Sav2 \n";
+
+// For Vulkan/DX12 (Bindless or Descriptor Sets)
+const rdcarray<UsedDescriptor> &resources = state.GetReadOnlyResources(ShaderStage::Pixel);
+ResourceId texId;
+std::cout << "Sav3 \n";
+for(const UsedDescriptor &used : resources)
+{
+    texId = used.descriptor.resource;
+    break;
+    // This is your Texture ID!
+}
+
+std::cout << "Sav4 \n";
+TextureSave saveConfig = {};
+saveConfig.resourceId = texId;
+saveConfig.typeCast = CompType::Typeless;
+saveConfig.slice.sliceIndex = 0;
+saveConfig.mip = 0;
+saveConfig.channelExtract = -1;  // all channels
+saveConfig.comp.blackPoint = 0.0f;
+saveConfig.comp.whitePoint = 1.0f;
+saveConfig.alpha = AlphaMapping::Preserve;  // keep alpha
+
+QString texFilename = filename.left(filename.length() - 4) + lit(".png");
+std::cout << "Sav5 \n";
+
+saveConfig.destType = FileType::PNG;
+ResultDetails result = r->SaveTexture(saveConfig, texFilename); 
+// ResultDetails result = {ResultCode::Succeeded};
+// m_Ctx.Replay().BlockInvoke(
+//     [&result, &saveConfig, texFilename](IReplayController *r) 
+//     { 
+//       saveConfig.destType = FileType::PNG;
+//         result = r->SaveTexture(saveConfig, texFilename); 
+//     });
+std::cout << "Sav6 \n";
+
+if(!result.OK())
+{
+    std::cout << "Failed to save texture:\n";// << result.Message();
+}
+else
+{
+    std::cout << "Saved texture to " << texFilename.toStdString() << std::endl;
+}
+        //SaveTexture
+
 
 // // Get WVP matrix from vertex shader constant buffer
 // const PipeState &pipeState = m_Ctx.CurPipelineState();
@@ -5833,7 +6050,11 @@ else
 
 
             // Get VSOut post-transform data
-            MeshFormat posvs = r->GetPostVSData(0, 0, MeshDataStage::VSOut);
+//            MeshFormat posvs = r->GetPostVSData(0, 0, MeshDataStage::VSOut);
+            MeshFormat posvs = r->GetPostVSData(0, 0, MeshDataStage::VSIn);
+
+            // Get the format for the Normal attribute from Input
+MeshFormat normInFmt = r->GetPostVSData(0, 1, MeshDataStage::VSIn);
 
 s << "# unproject=" << (int)posvs.unproject 
   << " nearPlane=" << posvs.nearPlane
@@ -5846,8 +6067,10 @@ s << "# unproject=" << (int)posvs.unproject
                 continue;
 
             // Get vertex buffer data
+//            bytebuf vdata = r->GetBufferData(posvs.vertexResourceId, 
+//                                              posvs.vertexByteOffset, 0);
             bytebuf vdata = r->GetBufferData(posvs.vertexResourceId, 
-                                              posvs.vertexByteOffset, 0);
+                                              0, 0);
 
             if(vdata.empty())
                 continue;
@@ -5862,13 +6085,25 @@ s << "# unproject=" << (int)posvs.unproject
             // We need to do perspective divide to get NDC, then unproject
             for(uint32_t i = 0; i < numVerts; i++)
             {
-                const byte *ptr = vdata.data() + i * stride;
-                const float *pos = (const float *)ptr;  // _sig32._child0 at offset 0, float4
+              const byte *vertexPtr = vdata.data() + posvs.vertexByteOffset + (i * posvs.vertexByteStride);
+//                const byte *ptr = vdata.data() + i * stride;
+//                const float *pos = (const float *)ptr;  // _sig32._child0 at offset 0, float4
+
+// If the position attribute itself has an internal offset (common in VSOut)
+    // vertexPtr += posvs.componentByteOffset;
+const float *pos = (const float *)vertexPtr;
 
                 float x = pos[0];
                 float y = pos[1];
                 float z = pos[2];
                 float w = pos[3];
+
+                const byte *normPtr = vdata.data() + (i * normInFmt.vertexByteStride) + normInFmt.vertexByteOffset;
+const float *rawNorm = (const float *)normPtr;
+                float nx = rawNorm[0];
+                float ny = rawNorm[1];
+                float nz = rawNorm[2];
+                float nw = 0.0f;
 
 // Inside BlockInvoke where matrix.h is not needed
 // Unproject clip space position to view space manually
@@ -6035,9 +6270,11 @@ auto mat4mul = [](const float m[16], float x, float y, float z, float w,
 
 
         float ox=-1, oy=-1, oz=-1, ow=-1;
+        float onx=-1, ony=-1, onz=-1, onw=-1;
     if (customMatrixSet2) {
 
 mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
+mat4mul(customMatrix2, nx, ny, nz, nw, onx, ony, onz, onw);
 //if(ow != 0.0f) { ox/=ow; oy/=ow; oz/=ow; }
 
         // Now use myMatrix to transform your vertices!
@@ -6108,7 +6345,7 @@ mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
                 //     y /= w;
                 //     z /= w;
                 // }
-                s << "#v_org " << pos[0] << " " << pos[1] << " " << pos[2] << "\n";
+                s << "# "<< (i+1) <<" v_org " << pos[0] << " " << pos[1] << " " << pos[2] << "\n";
 
                 // swap Y/Z and negate X for blender coordinate system
 //                s << "v " << -x << " " << z << " " << y << "\n";
@@ -6122,11 +6359,17 @@ mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
                //s << "v " << ox << " " << oy << " " << oz << "\n";
                s << "v " << -oz << " " << -oy << " " << -ox << "\n"; //blender fix
 
+               s << "# "<< (i+1) <<" n_org " << nx << " " << ny << " " << nz << "\n";
+               s << "vn " << -onz << " " << -ony << " " << -onx << "\n"; //blender fix
+
 
                 // UV at offset 16 (_output0, float4, first 2 floats are UV)
                 if(stride >= 24)
                 {
-                    const float *uv = (const float *)(ptr + 16);
+//                    const float *uv = (const float *)(ptr + 16);
+                    const float *uv = (const float *)(vertexPtr + 16);
+//                    s << "vt " << uv[0] << " " << (1.0f - uv[1]) << "\n";
+                    s << "# vt raw " << uv[0] << " " << uv[1] << "\n";
                     s << "vt " << uv[0] << " " << (1.0f - uv[1]) << "\n";
                 }
 
