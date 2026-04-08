@@ -5852,6 +5852,19 @@ s << "# cbShader valid=" << (cbShader != ResourceId()) << "\n";
 s << "# cbEntry=" << cbEntry.c_str() << "\n";
 
 
+// Get VSIn data - input vertex buffers
+rdcarray<BoundVBuffer> vbs = uiState.GetVBuffers();
+BoundVBuffer ib = uiState.GetIBuffer();
+
+std::cout << "VB count=" << vbs.size() << std::endl;
+for(size_t i = 0; i < vbs.size(); i++)
+{
+    std::cout << "VB" << i << "resourceId valid=" << (vbs[i].resourceId != ResourceId())
+             << "byteStride=" << vbs[i].byteStride
+             << "byteOffset=" << vbs[i].byteOffset << std::endl;
+}
+
+
     m_Ctx.Replay().BlockInvoke([&](IReplayController *r) {
 
         for(uint32_t eid = startEID; eid <= endEID; eid++)
@@ -6047,6 +6060,33 @@ else
 //     }
 // }
 
+
+//unstransformed
+
+// Read VSIn vertex buffer
+if(vbs.size() > 0 && vbs[0].resourceId != ResourceId())
+{
+    bytebuf vsinData = r->GetBufferData(vbs[0].resourceId, vbs[0].byteOffset, 0);
+    
+    uint32_t stride = vbs[0].byteStride;
+    uint32_t numVerts = (uint32_t)(vsinData.size() / stride);
+    
+    for(uint32_t i = 0; i < numVerts; i++)
+    {
+        const byte *ptr = vsinData.data() + i * stride;
+        const float *pos    = (const float *)(ptr + 0);   // _input0 xyz
+        const float *normal = (const float *)(ptr + 12);  // _input1 xyz
+        const float *uv     = (const float *)(ptr + 24);  // _input2 xy
+        
+        uint32_t one = i+1;
+        s << "# 1-index " << one << Qt::endl;
+        s << "v "  << pos[0] << " " << pos[1] << " " << pos[2] << "\n";
+        s << "vn " << normal[0] << " " << normal[1] << " " << normal[2] << "\n";
+        s << "vt " << uv[0] << " " << (1.0f - uv[1]) << "\n";
+    }
+}
+
+//unstransformed
 
 
             // Get VSOut post-transform data
@@ -6355,7 +6395,7 @@ mat4mul(customMatrix2, nx, ny, nz, nw, onx, ony, onz, onw);
 //                s << "v " << -pos[0] << " " << pos[2] << " " << pos[1] << "\n";
 
 //s << "v " << pos[0] << " " << pos[2] << " " << -pos[1] << "\n";
-
+/*
                //s << "v " << ox << " " << oy << " " << oz << "\n";
                s << "v " << -oz << " " << -oy << " " << -ox << "\n"; //blender fix
 
@@ -6372,7 +6412,7 @@ mat4mul(customMatrix2, nx, ny, nz, nw, onx, ony, onz, onw);
                     s << "# vt raw " << uv[0] << " " << uv[1] << "\n";
                     s << "vt " << uv[0] << " " << (1.0f - uv[1]) << "\n";
                 }
-
+*/
                 // Normal at offset 16+16=32? check your VSOut layout
                 // _output1 at offset 32, float1 - might not be normal
                 // so we skip normals for VSOut for now
