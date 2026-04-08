@@ -97,6 +97,7 @@ public:
   ~BufferViewer();
 
   const MeshDisplay &GetMeshConfig() const { return m_Config; }
+  QAbstractItemModel *GetModelIn() { return (QAbstractItemModel*)m_ModelIn; }
 
   const ProjectionGuessParameters &GetProjGuess() const { return m_ProjGuess; }
 

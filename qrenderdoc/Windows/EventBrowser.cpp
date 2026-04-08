@@ -5673,6 +5673,42 @@ void EventBrowser::events_keyPress(QKeyEvent *event)
 QModelIndex m_SelectStartIndex;
 QModelIndex m_SelectEndIndex;
 
+#include <QImage>
+#include <QColor>
+#include <algorithm>
+
+void brightenTexture(const QString &inputPath, const QString &outputPath) {
+    QImage img(inputPath);
+    if (img.isNull()) return;
+
+    // Ensure we are working with a format that has an alpha channel
+    img = img.convertToFormat(QImage::Format_ARGB32);
+
+    float factor = 3.14f;
+//    float factor = 7.9f;
+
+    for (int y = 0; y < img.height(); y++) {
+        // Use scanLine for faster access than setPixel
+        QRgb *line = reinterpret_cast<QRgb*>(img.scanLine(y));
+        
+        for (int x = 0; x < img.width(); x++) {
+            int r = qRed(line[x]);
+            int g = qGreen(line[x]);
+            int b = qBlue(line[x]);
+            int a = qAlpha(line[x]);
+
+            // Multiply and clamp to 255 (0xFF)
+            int newR = std::min(255, int(r * factor));
+            int newG = std::min(255, int(g * factor));
+            int newB = std::min(255, int(b * factor));
+
+            line[x] = qRgba(newR, newG, newB, a);
+        }
+    }
+
+    img.save(outputPath, "PNG");
+}
+
 void EventBrowser::exportObjRange()
 {
   uint32_t startEID = m_SelectStartIndex.data(ROLE_SELECTED_EID).toUInt();
@@ -5738,10 +5774,15 @@ float customMatrix[16] = {
     0.0f,      0.0f, 0.0f,      0.251354f,
     0.0f,      0.0f, 1.0f,      0.0f
 };
+float rotationMatrix[9] = {
+    0.909555f, 0.0f, 0.0f,
+    0.0f,      1.0f, 0.0f,
+    0.0f,      0.0f, 0.0f
+};
 bool customMatrixSet = true;
 
-
 float customMatrix2[16];
+float rotationMatrix2[9];
 bool customMatrixSet2 = false;
 if(m_Ctx.HasMeshPreview())
 {
@@ -5750,6 +5791,18 @@ if(m_Ctx.HasMeshPreview())
     {
         memcpy(customMatrix2, meshViewer->GetMeshConfig().customMatrix, sizeof(float)*16);
         customMatrixSet2 = meshViewer->GetMeshConfig().customMatrixSet;
+
+        rotationMatrix2[0] = customMatrix2[0]; // Row 0
+        rotationMatrix2[1] = customMatrix2[1];
+        rotationMatrix2[2] = customMatrix2[2];
+
+        rotationMatrix2[3] = customMatrix2[4]; // Row 1
+        rotationMatrix2[4] = customMatrix2[5];
+        rotationMatrix2[5] = customMatrix2[6];
+
+        rotationMatrix2[6] = customMatrix2[8]; // Row 3
+        rotationMatrix2[7] = customMatrix2[9];
+        rotationMatrix2[8] = customMatrix2[10];
     }
 }
 if (customMatrixSet2)
@@ -5765,6 +5818,26 @@ else
 {
     std::cout << "100 EVENTBROWSER NOT SET" << std::endl;
 }
+
+//gun mesh
+float gunMatrix[16] = {
+    0.0346f, -0.9994f, 0.00f, -712.00f,
+    0.9994f, 0.0346f,  0.00f, -1240.00f,
+    0.00f,    0.00f,    1.00f,  48.00f,
+    0.00f,    0.00f,    0.00f,  1.00f
+};
+float gunMatrixNoTrans[16] = {
+    0.0346f, -0.9994f, 0.00f, 0.00f,
+    0.9994f, 0.0346f,  0.00f, 0.00f,
+    0.00f,    0.00f,    1.00f,  0.00f,
+    0.00f,    0.00f,    0.00f,  1.00f
+};
+float ident[16] = {
+    1.00f, 0.00f, 0.00f, 0.00f,
+    0.00f, 1.00f, 0.00f, 0.00f,
+    0.00f, 0.00f, 1.00f, 0.00f,
+    0.00f, 0.00f, 0.00f, 1.00f
+};
 
 
 // // Get SSBO world matrix BEFORE BlockInvoke (on UI thread)
@@ -6000,6 +6073,8 @@ else
 {
     std::cout << "Saved texture to " << texFilename.toStdString() << std::endl;
 }
+
+brightenTexture(texFilename, texFilename);
         //SaveTexture
 
 
@@ -6062,7 +6137,125 @@ else
 
 
 //unstransformed
+float u_vx = -1;
+float u_vy = -1;
+float u_vz = -1;
+float u_nx = -1;
+float u_ny = -1;
+float u_nz = -1;
+float u_uu = -1;
+float u_uv = -1;
 
+float ox=-1, oy=-1, oz=-1, ow=-1;
+float onx=-1, ony=-1, onz=-1, onw=-1;
+
+auto mat4mul = [](const float m[16], float x, float y, float z, float w,
+                  float &ox, float &oy, float &oz, float &ow)
+{
+    // result[row] = sum over cols of m[row + col*4] * v[col]
+    ox = m[0]*x + m[4]*y + m[8]*z  + m[12]*w;
+    oy = m[1]*x + m[5]*y + m[9]*z  + m[13]*w;
+    oz = m[2]*x + m[6]*y + m[10]*z + m[14]*w;
+    ow = m[3]*x + m[7]*y + m[11]*z + m[15]*w;
+};
+auto mat3mul = [](const float m[9], float x, float y, float z, 
+                  float &ox, float &oy, float &oz)
+{
+    // result[row] = sum over cols of m[row + col*3] * v[col]
+    ox = m[0]*x + m[3]*y + m[6]*z;
+    oy = m[1]*x + m[4]*y + m[7]*z;
+    oz = m[2]*x + m[5]*y + m[8]*z;
+};
+
+QAbstractItemModel* model = nullptr;
+if(m_Ctx.HasMeshPreview())
+{
+    BufferViewer *meshViewer = qobject_cast<BufferViewer *>(m_Ctx.GetMeshPreview()->Widget());
+    if(meshViewer)
+    {
+        // use BufferViewer's VSIn model
+        model = meshViewer->GetModelIn();
+        
+        // ... your column detection code here using model ...
+    }
+}
+
+
+int posSize = 12;
+int normalSize = 12;
+int uvSize = 8;
+
+        // Find first float2 column (has .x and .y but no .z)
+int uvColStart = -1;
+if (model!=nullptr)
+for(int i = 0; i < model->columnCount() - 1; i++)
+{
+    QString colName = model->headerData(i, Qt::Horizontal, Qt::DisplayRole).toString();
+    QString nextColName = model->headerData(i+1, Qt::Horizontal, Qt::DisplayRole).toString();
+    
+ if(colName.endsWith(lit(".x")) && nextColName.endsWith(lit(".y")))
+{
+    // check there's no .z after
+    bool hasZ = false;
+    if(i + 2 < model->columnCount())
+    {
+        QString afterNext = model->headerData(i+2, Qt::Horizontal, Qt::DisplayRole).toString();
+        QString baseName = colName.left(colName.length() - 2);
+        if(afterNext == baseName + lit(".z"))
+            hasZ = true;
+    }
+    if(!hasZ)
+    {
+        uvColStart = i;
+        break;
+    }
+}
+}
+s << "# UV col start=" << uvColStart << "\n";
+bool hasUV = uvColStart!=-1;
+
+// Find first float3 column after position (has .x, .y, .z but no .w)
+int normalColStart = -1;
+int posColStart = 2; // skip VTX and IDX, position starts at col 2
+
+if (model!=nullptr)
+for(int i = posColStart + 3; i < model->columnCount() - 2; i++) // skip position (3 components)
+{
+    QString colName = model->headerData(i, Qt::Horizontal, Qt::DisplayRole).toString();
+    QString col1 = model->headerData(i+1, Qt::Horizontal, Qt::DisplayRole).toString();
+    QString col2 = model->headerData(i+2, Qt::Horizontal, Qt::DisplayRole).toString();
+
+    if(colName.endsWith(lit(".x")) && col1.endsWith(lit(".y")) && col2.endsWith(lit(".z")))
+    {
+        // make sure there's no .w after (which would make it float4)
+        bool hasW = false;
+        if(i + 3 < model->columnCount())
+        {
+            QString col3 = model->headerData(i+3, Qt::Horizontal, Qt::DisplayRole).toString();
+            QString baseName = colName.left(colName.length() - 2);
+            if(col3 == baseName + lit(".w"))
+                hasW = true;
+        }
+        if(!hasW)
+        {
+            normalColStart = i;
+            break;
+        }
+    }
+}
+s << "# Normal col start=" << normalColStart << "\n";
+bool hasNormal = normalColStart!=-1;
+
+if (!hasNormal)
+  normalSize = 0;
+if (!hasUV)
+  uvSize = 0;
+
+std::vector<float> untrans_normals_x;
+std::vector<float> untrans_normals_y;
+std::vector<float> untrans_normals_z;
+std::vector<float> untrans_uv_u;
+std::vector<float> untrans_uv_v;
 // Read VSIn vertex buffer
 if(vbs.size() > 0 && vbs[0].resourceId != ResourceId())
 {
@@ -6074,15 +6267,61 @@ if(vbs.size() > 0 && vbs[0].resourceId != ResourceId())
     for(uint32_t i = 0; i < numVerts; i++)
     {
         const byte *ptr = vsinData.data() + i * stride;
-        const float *pos    = (const float *)(ptr + 0);   // _input0 xyz
-        const float *normal = (const float *)(ptr + 12);  // _input1 xyz
-        const float *uv     = (const float *)(ptr + 24);  // _input2 xy
+
+        if (hasNormal)
+        {
+          const float *normal = (const float *)(ptr + posSize);
+          untrans_normals_x.push_back(normal[0]);
+          untrans_normals_y.push_back(normal[1]);
+          untrans_normals_z.push_back(normal[2]);
+        }
+        if (hasUV)
+        {
+          const float *uv = (const float *)(ptr + posSize + normalSize);
+          untrans_uv_u.push_back(uv[0]);
+          untrans_uv_v.push_back(uv[1]);
+        }
+
+        // const float *pos    = (const float *)(ptr + 0);   // _input0 xyz
+        // const float *normal = (const float *)(ptr + 12);  // _input1 xyz
+        // const float *uv     = (const float *)(ptr + 24);  // _input2 xy
         
-        uint32_t one = i+1;
-        s << "# 1-index " << one << Qt::endl;
-        s << "v "  << pos[0] << " " << pos[1] << " " << pos[2] << "\n";
-        s << "vn " << normal[0] << " " << normal[1] << " " << normal[2] << "\n";
-        s << "vt " << uv[0] << " " << (1.0f - uv[1]) << "\n";
+        // uint32_t one = i+1;
+        // s << "# 1-index " << one << Qt::endl;
+        // s << "#v "  << pos[0] << " " << pos[1] << " " << pos[2] << "\n";
+        // s << "#vn " << normal[0] << " " << normal[1] << " " << normal[2] << "\n";
+        // s << "#vt " << uv[0] << " " << (1.0f - uv[1]) << "\n";
+        // u_vx = pos[0];
+        // u_vy = pos[1];
+        // u_vz = pos[2];
+        // u_nx = normal[0];
+        // u_ny = normal[1];
+        // u_nz = normal[2];
+        // u_uu = uv[0];
+        // u_uv = uv[1];
+
+        // ox = u_vx;
+        // oy = u_vy;
+        // oz = u_vz;
+        // onx = u_nx;
+        // ony = u_ny;
+        // onz = u_nz;
+
+//        mat4mul(gunMatrix, u_vx, u_vy, u_vz, 1.0f, ox, oy, oz, ow);
+//mat4mul(gunMatrixNoTrans, u_nx, u_ny, u_nz, 1.0f, onx, ony, onz, onw);
+
+//mat4mul(ident, u_vx, u_vy, u_vz, 1.0f, ox, oy, oz, ow);
+//mat4mul(ident, u_nx, u_ny, u_nz, 1.0f, onx, ony, onz, onw);
+
+              //  s << "v " << -oz << " " << -oy << " " << -ox << "\n"; //blender fix
+              //  s << "vn " << -onz << " " << -ony << " " << -onx << "\n"; //blender fix
+              //  s << "vt " << u_uu << " " << (1.0f - u_uv) << "\n";
+
+              //  s << "v " << ox << " " << oy << " " << oz << "\n"; //blender fix
+              //  s << "vn " << onx << " " << ony << " " << onz << "\n"; //blender fix
+              //  s << "vt " << u_uu << " " << (1.0f - u_uv) << "\n";
+
+
     }
 }
 
@@ -6297,20 +6536,15 @@ if(ow != 0.0f) { ox/=ow; oy/=ow; oz/=ow; }
 
 
 
-auto mat4mul = [](const float m[16], float x, float y, float z, float w,
-                  float &ox, float &oy, float &oz, float &ow)
+if (hasNormal)
 {
-    // result[row] = sum over cols of m[row + col*4] * v[col]
-    ox = m[0]*x + m[4]*y + m[8]*z  + m[12]*w;
-    oy = m[1]*x + m[5]*y + m[9]*z  + m[13]*w;
-    oz = m[2]*x + m[6]*y + m[10]*z + m[14]*w;
-    ow = m[3]*x + m[7]*y + m[11]*z + m[15]*w;
-};
+nx = untrans_normals_x[i];
+ny = untrans_normals_y[i];
+nz = untrans_normals_z[i];
+}
 
 
-
-        float ox=-1, oy=-1, oz=-1, ow=-1;
-        float onx=-1, ony=-1, onz=-1, onw=-1;
+ 
     if (customMatrixSet2) {
 
 mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
@@ -6322,6 +6556,52 @@ mat4mul(customMatrix2, nx, ny, nz, nw, onx, ony, onz, onw);
         // Fallback if the matrix hasn't been set yet
           s << "# ERROR4 matrix not set\n";
     }
+
+
+mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
+
+//mat4mul(customMatrix2, nx, ny, nz, nw, onx, ony, onz, onw);
+//mat3mul(rotationMatrix2, nx, ny, nz, onx, ony, onz);
+
+
+
+//mat4mul(ident, u_vx, u_vy, u_vz, 1.0f, ox, oy, oz, ow);
+//mat4mul(ident, u_nx, u_ny, u_nz, 1.0f, onx, ony, onz, onw);
+
+               s << "v " << ox << " " << oy << " " << oz << "\n"; //blender fix
+
+               if (hasNormal)
+               {
+                  s << "#uvn " << untrans_normals_x[i] << " " << untrans_normals_y[i] << " " << untrans_normals_z[i] << "\n"; //blender fix
+                  s << "vn " << untrans_normals_x[i] << " " << untrans_normals_y[i] << " " << untrans_normals_z[i] << "\n"; //blender fix
+//                  s << "vn " << onx << " " << ony << " " << onz << "\n"; //blender fix
+               }
+
+               if (hasUV)
+               {
+//               s << "vt " << untrans_uv_u[i] << " " << (1.0f - untrans_uv_v[i]) << "\n";
+               }
+
+
+//               s << "vn " << onx << " " << ony << " " << onz << "\n"; //blender fix
+
+
+//                 // UV at offset 16 (_output0, float4, first 2 floats are UV)
+                if(stride >= 24)
+                {
+//                    const float *uv = (const float *)(ptr + 16);
+                    const float *uv = (const float *)(vertexPtr + 16);
+//                    s << "vt " << uv[0] << " " << (1.0f - uv[1]) << "\n";
+                    s << "# vt raw " << uv[0] << " " << uv[1] << "\n";
+                    s << "vt " << uv[0] << " " << (1.0f - uv[1]) << "\n";
+                }
+
+//               s << "vt " << u_uu << " " << (1.0f - u_uv) << "\n";
+
+              //  s << "v " << -oz << " " << -oy << " " << -ox << "\n"; //blender fix
+              //  s << "vn " << -onz << " " << -ony << " " << -onx << "\n"; //blender fix
+              //  s << "vt " << u_uu << " " << (1.0f - u_uv) << "\n";
+
 
 
 // // Look up the symbol in the current process (where librenderdoc is loaded)
@@ -6441,9 +6721,19 @@ mat4mul(customMatrix2, nx, ny, nz, nw, onx, ony, onz, onw);
                     int g0 = globalVertOffset + i0;
                     int g1 = globalVertOffset + i1;
                     int g2 = globalVertOffset + i2;
+                    if (hasNormal)
+                    {
+                    s << "f " << g0 << "/" << g0 << "/" << g0 << " "
+                              << g1 << "/" << g1 << "/" << g1 << " "
+                              << g2 << "/" << g2 << "/" << g2 << "\n";
+
+                    }
+                    else
+                    {
                     s << "f " << g0 << "/" << g0 << " "
                               << g1 << "/" << g1 << " "
                               << g2 << "/" << g2 << "\n";
+                    }
                 }
             }
             else
@@ -6454,9 +6744,19 @@ mat4mul(customMatrix2, nx, ny, nz, nw, onx, ony, onz, onw);
                     int g0 = globalVertOffset + i;
                     int g1 = globalVertOffset + i + 1;
                     int g2 = globalVertOffset + i + 2;
+                    if (hasNormal)
+                    {
+                    s << "f " << g0 << "/" << g0 << "/" << g0 << " "
+                              << g1 << "/" << g1 << "/" << g1 << " "
+                              << g2 << "/" << g2 << "/" << g2 << "\n";
+
+                    }
+                    else
+                    {
                     s << "f " << g0 << "/" << g0 << " "
                               << g1 << "/" << g1 << " "
                               << g2 << "/" << g2 << "\n";
+                    }
                 }
             }
 
