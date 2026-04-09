@@ -5734,8 +5734,6 @@ std::cout << "1 EXPORT RANGE TRIGGERED " <<
 
     QTextStream s(&file);
     s << "# Exported from RenderDoc EID " << startEID << " to " << endEID << "\n";
-    s << "mtllib " << QFileInfo(filename).baseName() << ".mtl\n";
-    s << "usemtl material0\n\n";
 
     int globalVertOffset = 1;  // OBJ is 1-indexed
 
@@ -5947,6 +5945,7 @@ for(size_t i = 0; i < vbs.size(); i++)
             std::cout << "W1 \n";
 
 
+
            if(uniforms21Id != ResourceId())
 {
     bytebuf rawData = r->GetBufferData(uniforms21Id, uniforms21Offset, 108);
@@ -6051,7 +6050,7 @@ saveConfig.comp.blackPoint = 0.0f;
 saveConfig.comp.whitePoint = 1.0f;
 saveConfig.alpha = AlphaMapping::Preserve;  // keep alpha
 
-QString texFilename = filename.left(filename.length() - 4) + lit(".png");
+QString texFilename = filename.left(filename.length() - 4) + lit("_") +QString::number(eid) + lit(".png");
 std::cout << "Sav5 \n";
 
 saveConfig.destType = FileType::PNG;
@@ -6076,6 +6075,29 @@ else
 
 brightenTexture(texFilename, texFilename);
         //SaveTexture
+
+
+            s << "o " << QFileInfo(texFilename).baseName() << "\n";
+    s << "mtllib " << QFileInfo(texFilename).baseName() << ".mtl\n";
+    s << "usemtl material" << eid << "\n\n";
+
+
+    // Save MTL
+    QString dirPath = QFileInfo(texFilename).absolutePath();
+    QString mtlFilename = dirPath + lit("/") + QFileInfo(texFilename).baseName() + lit(".mtl");
+    QFile mtlFile(mtlFilename);
+    if(mtlFile.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QTextStream m(&mtlFile);
+        m << "newmtl material" << eid <<"\n";
+        m << "Ka 1.0 1.0 1.0\n";
+        m << "Kd 1.0 1.0 1.0\n";
+        m << "Ks 0.0 0.0 0.0\n";
+        m << "map_Kd " << QFileInfo(texFilename).baseName() << ".png\n";
+        m << "map_d " << QFileInfo(texFilename).baseName() << ".png\n";
+        mtlFile.close();
+    }
+
 
 
 // // Get WVP matrix from vertex shader constant buffer
@@ -6769,20 +6791,7 @@ mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
 
     file.close();
 
-    // Save MTL
-    QString mtlFilename = filename.left(filename.length() - 4) + lit(".mtl");
-    QFile mtlFile(mtlFilename);
-    if(mtlFile.open(QIODevice::WriteOnly | QIODevice::Text))
-    {
-        QTextStream m(&mtlFile);
-        m << "newmtl material0\n";
-        m << "Ka 1.0 1.0 1.0\n";
-        m << "Kd 1.0 1.0 1.0\n";
-        m << "Ks 0.0 0.0 0.0\n";
-        m << "map_Kd " << QFileInfo(filename).baseName() << ".png\n";
-        m << "map_d " << QFileInfo(filename).baseName() << ".png\n";
-        mtlFile.close();
-    }
+
 }
 
 // void EventBrowser::exportObjRangeONE()
