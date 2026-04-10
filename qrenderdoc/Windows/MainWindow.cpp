@@ -112,6 +112,7 @@ void MainWindow::MakeNetworkRequest(QUrl url, std::function<void(QByteArray)> su
 MainWindow::MainWindow(ICaptureContext &ctx) : QMainWindow(NULL), ui(new Ui::MainWindow), m_Ctx(ctx)
 {
   ui->setupUi(this);
+  QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
 
   setProperty("ICaptureContext", QVariant::fromValue((void *)&ctx));
 

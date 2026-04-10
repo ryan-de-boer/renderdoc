@@ -6073,7 +6073,17 @@ else
     std::cout << "Saved texture to " << texFilename.toStdString() << std::endl;
 }
 
+
+                  std::string temp = m_Ctx.GetCaptureFilename().c_str();
+    // convert string to lowercase
+    std::transform(temp.begin(), temp.end(), temp.begin(),
+                   [](unsigned char c){ return std::tolower(c); });
+    if (temp.find("quake") != std::string::npos)
+    {
 brightenTexture(texFilename, texFilename);
+    }
+
+
         //SaveTexture
 
 
