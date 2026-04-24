@@ -31,6 +31,7 @@
 #include "stb/stb_image.h"
 #include "stb/stb_image_resize2.h"
 #include "stb/stb_image_write.h"
+#include <iostream>
 
 static void writeToBytebuf(void *context, void *data, int size)
 {
@@ -380,9 +381,13 @@ rdcpair<ResultDetails, IReplayController *> CaptureFile::OpenCapture(const Repla
   if(m_RDC->SectionIndex(SectionType::EmbeddedExternalFiles) >= 0)
     ret = RenderDoc::Inst().ReadExternalFiles(m_RDC);
 
+  std::cout << "DEBUGR: 1\n";
   ret = render->CreateDevice(m_RDC, opts);
+  
+  std::cout << "DEBUGR: 2\n";
 
   RenderDoc::Inst().SetProgressCallback<LoadProgress>(RENDERDOC_ProgressCallback());
+  std::cout << "DEBUGR: 3\n";
 
   if(!ret.OK())
   {
@@ -390,6 +395,7 @@ rdcpair<ResultDetails, IReplayController *> CaptureFile::OpenCapture(const Repla
     render = NULL;
   }
 
+  std::cout << "DEBUGR: 4\n";
   return {ret, render};
 }
 

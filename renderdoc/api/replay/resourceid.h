@@ -75,7 +75,9 @@ struct ResourceId
 #endif
 
 private:
+public:
   uint64_t id;
+private:
 
 #ifdef RENDERDOC_EXPORTS
   friend ResourceId ResourceIDGen::GetNewUniqueID();

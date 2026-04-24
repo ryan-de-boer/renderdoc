@@ -51,6 +51,7 @@ BINDING(0) uniform MeshUBOData
   uvec4 meshletColours[12];
 
   float ambient;
+  uint flipV;
 }
 INST_NAME(Mesh);
 

@@ -75,7 +75,11 @@ void main(void)
 
 vec3 lightDir = normalize(vec3(0, -0.3f, -1));
 vec2 uv = gsout_uv_binding.xy;
-//uv.y = 1.0 - uv.y;    // flip V
+if (Mesh.flipV==1)
+{
+uv.y = 1.0 - uv.y;    // flip V
+}
+
 vec4 texColor = texture(meshTexture, uv);
 
     // discard fully transparent pixels so they don't affect depth

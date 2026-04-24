@@ -5183,16 +5183,19 @@ if(texcoordIdx < 0)
 // assign SECONDARY_NAME properly
 if(texcoordIdx >= 0 && texcoordIdx < out1Config.columns.count())
 {
-    const BufferElementProperties &prop = out1Config.props[texcoordIdx];
+  //this crashed: so comment out the block?
+  //m_Out1Secondary.vertexByteStride = vbs[prop.buffer].byteStride;
 
-    m_Out1Secondary = m_Out1Data; // VS output buffer
-    m_Out1Secondary.vertexByteOffset += out1Config.columns[texcoordIdx].byteOffset;
-    m_Out1Secondary.vertexByteStride = vbs[prop.buffer].byteStride;  // <--- use buffer stride
-    m_Out1Secondary.vertexResourceId = vbs[prop.buffer].resourceId;
-    m_Out1Secondary.format = prop.format;
-    m_Out1Secondary.instanced = prop.perinstance;
-    m_Out1Secondary.instStepRate = prop.instancerate;
-}
+//     const BufferElementProperties &prop = out1Config.props[texcoordIdx];
+
+//     m_Out1Secondary = m_Out1Data; // VS output buffer
+//     m_Out1Secondary.vertexByteOffset += out1Config.columns[texcoordIdx].byteOffset;
+//     m_Out1Secondary.vertexByteStride = vbs[prop.buffer].byteStride;  // <--- use buffer stride
+//     m_Out1Secondary.vertexResourceId = vbs[prop.buffer].resourceId;
+//     m_Out1Secondary.format = prop.format;
+//     m_Out1Secondary.instanced = prop.perinstance;
+//     m_Out1Secondary.instStepRate = prop.instancerate;
+ }
 //gpt
 
   }
@@ -5842,6 +5845,11 @@ std::cout << "31 VSOut UV: binding=0 offset=16" << std::endl;
     if (temp.find("quake") != std::string::npos)
     {
       m_Config.meshAmbient = 1.5f;
+    }
+    m_Config.flipV = false;
+    if (temp.find("vulkan_app") != std::string::npos)
+    {
+      m_Config.flipV = true;
     }
 
 

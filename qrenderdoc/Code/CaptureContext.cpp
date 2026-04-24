@@ -65,7 +65,7 @@
 #include "QRDUtils.h"
 #include "RGPInterop.h"
 #include "version.h"
-
+#include <iostream>
 #include "pipestate.inl"
 
 float m_CustomMatrix[16] = {};
@@ -842,6 +842,8 @@ void CaptureContext::LoadCapture(const rdcstr &captureFile, const ReplayOptions 
                                  const rdcstr &origFilename, bool temporary, bool local)
 {
   RENDERDOC_PROFILEFUNCTION();
+
+  std::cout << "DEBUG: UI starting capture load for: " << captureFile.c_str() << "\n";
 
   CloseCapture();
 

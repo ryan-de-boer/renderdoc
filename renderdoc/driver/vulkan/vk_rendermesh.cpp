@@ -248,7 +248,7 @@ std::cout << "11 bits: " << bit << std::endl;
     {1, secondary.vertexByteStride,
      secondary.instanced ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX},
     // UV (textured mode) - same stride as primary since it's in the same buffer
-//    {2, primary.vertexByteStride, VK_VERTEX_INPUT_RATE_VERTEX},
+    {2, primary.vertexByteStride, VK_VERTEX_INPUT_RATE_VERTEX},
 };
 
   RDCASSERT(primaryFmt != VK_FORMAT_UNDEFINED);
@@ -321,7 +321,7 @@ std::cout << "test1" << std::endl;
 
 
   VkPipelineVertexInputStateCreateInfo vi = {
-      VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, NULL, 0, 2, binds, 3, vertAttrs,
+      VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, NULL, 0, 3, binds, 3, vertAttrs,
   };
 
   VkPipelineShaderStageCreateInfo stages[3] = {
@@ -504,6 +504,7 @@ std::cout << "test3" << std::endl;
   };
 
   // wireframe pipeline
+
   stages[0].module = Unwrap(m_pDriver->GetShaderCache()->GetBuiltinModule(BuiltinShader::MeshVS));
   stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
   stages[1].module = Unwrap(m_pDriver->GetShaderCache()->GetBuiltinModule(BuiltinShader::MeshFS));
@@ -529,6 +530,18 @@ std::cout << "test4.01" << std::endl;
     rs.polygonMode = VK_POLYGON_MODE_FILL;
   }
 std::cout << "test4.02" << std::endl;
+
+//  RDCASSERT(stages[0].module != VK_NULL_HANDLE, "Vertex shader module is NULL!");
+//  RDCASSERT(stages[1].module != VK_NULL_HANDLE, "Fragment shader module is NULL!");
+
+if (stages[0].module == VK_NULL_HANDLE)
+{
+  std::cout << "4.02 Vertex shader module is NULL!" << std::endl;
+}
+if (stages[1].module == VK_NULL_HANDLE)
+{
+  std::cout << "4.02 Fragment shader module is NULL!" << std::endl;
+}
 
   vkr = vt->CreateGraphicsPipelines(Unwrap(m_Device), VK_NULL_HANDLE, 1, &pipeInfo, NULL,
                                     &cache.pipes[VKMeshDisplayPipelines::ePipe_Wire]);
@@ -978,6 +991,11 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const rdcarray<MeshFormat> &seco
 
 //    meshUniforms.ambient = 1.5f;
     meshUniforms.ambient = cfg.meshAmbient;
+    meshUniforms.flipV = 0;
+    if (cfg.flipV)
+    {
+      meshUniforms.flipV = 1;
+    }
 
     meshUniforms.color = Vec4f(0.8f, 0.8f, 0.0f, 1.0f);
     meshUniforms.displayFormat = VisModeToMeshDisplayFormat(finalVisualisation, cfg.second.showAlpha);

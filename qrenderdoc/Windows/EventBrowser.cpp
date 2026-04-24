@@ -64,6 +64,10 @@
 #include "Windows/BufferViewer.h"
 #include "Windows/Dialogs/ProjectionGuessDialog.h"
 
+#include <iostream>
+#include <chrono>
+#include <iomanip> // for std::setprecision
+
 //#include <dlfcn.h> // For dlsym on Linux
 
 
@@ -5935,6 +5939,10 @@ for(size_t i = 0; i < vbs.size(); i++)
              << "byteOffset=" << vbs[i].byteOffset << std::endl;
 }
 
+uint32_t totalEvents = endEID - startEID + 1;
+
+    auto startTime = std::chrono::steady_clock::now();
+
 
     m_Ctx.Replay().BlockInvoke([&](IReplayController *r) {
 
@@ -5942,7 +5950,34 @@ for(size_t i = 0; i < vbs.size(); i++)
         {
             r->SetFrameEvent(eid, false);
 
-            std::cout << "W1 \n";
+
+            // Update stats every 10 events to avoid console overhead
+        if (eid % 1 == 0 || eid == endEID) {
+            auto currentTime = std::chrono::steady_clock::now();
+            std::chrono::duration<double> elapsed = currentTime - startTime;
+            
+            uint32_t completed = eid - startEID;
+            float progress = (float)completed / (float)totalEvents;
+            
+            double timeLeftMinutes = 0.0;
+            if (progress > 0.01f) { // Only calculate once we have a stable average
+                double totalEstimatedTime = elapsed.count() / progress;
+                double remainingSeconds = totalEstimatedTime - elapsed.count();
+                timeLeftMinutes = remainingSeconds / 60.0;
+            }
+
+            // Print to stdout
+            // \r returns the cursor to the start of the line so it updates in-place
+            std::cout << "\rEID: " << eid 
+                      << " | Progress: " << std::fixed << std::setprecision(1) << (progress * 100.0f) << "%"
+                      << " | Time Left: " << std::setprecision(2) << timeLeftMinutes << "m    " 
+                      << std::flush;
+        }
+
+
+            std::cout <<   " \n";            
+
+//            std::cout << "W1 \n";
 
 
 
@@ -6019,19 +6054,19 @@ for(size_t i = 0; i < vbs.size(); i++)
 //     }
 // }
 
-            std::cout << "W10 \n";
+//            std::cout << "W10 \n";
 
         //SaveTexture
   // Save texture as PNG
-std::cout << "Sav1 \n";
+//std::cout << "Sav1 \n";
 // Inside EventBrowser or where you have access to m_Ctx
 const PipeState &state = m_Ctx.CurPipelineState();
-std::cout << "Sav2 \n";
+//std::cout << "Sav2 \n";
 
 // For Vulkan/DX12 (Bindless or Descriptor Sets)
 const rdcarray<UsedDescriptor> &resources = state.GetReadOnlyResources(ShaderStage::Pixel);
 ResourceId texId;
-std::cout << "Sav3 \n";
+//std::cout << "Sav3 \n";
 for(const UsedDescriptor &used : resources)
 {
     texId = used.descriptor.resource;
@@ -6039,7 +6074,7 @@ for(const UsedDescriptor &used : resources)
     // This is your Texture ID!
 }
 
-std::cout << "Sav4 \n";
+//std::cout << "Sav4 \n";
 TextureSave saveConfig = {};
 saveConfig.resourceId = texId;
 saveConfig.typeCast = CompType::Typeless;
@@ -6051,7 +6086,7 @@ saveConfig.comp.whitePoint = 1.0f;
 saveConfig.alpha = AlphaMapping::Preserve;  // keep alpha
 
 QString texFilename = filename.left(filename.length() - 4) + lit("_") +QString::number(eid) + lit(".png");
-std::cout << "Sav5 \n";
+//std::cout << "Sav5 \n";
 
 saveConfig.destType = FileType::PNG;
 ResultDetails result = r->SaveTexture(saveConfig, texFilename); 
@@ -6062,7 +6097,7 @@ ResultDetails result = r->SaveTexture(saveConfig, texFilename);
 //       saveConfig.destType = FileType::PNG;
 //         result = r->SaveTexture(saveConfig, texFilename); 
 //     });
-std::cout << "Sav6 \n";
+//std::cout << "Sav6 \n";
 
 if(!result.OK())
 {
@@ -6801,7 +6836,7 @@ mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
 
     file.close();
 
-
+    std::cout << std::endl << "Export Complete." << std::endl;
 }
 
 // void EventBrowser::exportObjRangeONE()

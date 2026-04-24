@@ -26,6 +26,7 @@
 #include "replay_controller.h"
 #include <string.h>
 #include <time.h>
+#include <iostream>
 #include "common/dds_readwrite.h"
 #include "driver/ihv/amd/amd_isa.h"
 #include "driver/ihv/amd/amd_rgp.h"
@@ -2179,12 +2180,15 @@ RDResult ReplayController::CreateDevice(RDCFile *rdc, const ReplayOptions &opts)
 
   IReplayDriver *driver = NULL;
   RDResult result = RenderDoc::Inst().CreateReplayDriver(rdc, opts, &driver);
+  std::cout << "DEBUGD: 1\n";
 
   if(driver && result == ResultCode::Succeeded)
   {
+    std::cout << "DEBUGD: 2\n";
     RDCLOG("Created replay driver.");
     return PostCreateInit(driver, rdc);
   }
+  std::cout << "DEBUGD: 3\n";
 
   RDCERR("Couldn't create a replay device.");
   return result;
@@ -2206,6 +2210,8 @@ RDResult ReplayController::SetDevice(IReplayDriver *device)
 
 RDResult ReplayController::PostCreateInit(IReplayDriver *device, RDCFile *rdc)
 {
+  std::cout << "DEBUG P: 1\n";
+
   CHECK_REPLAY_THREAD();
 
   RENDERDOC_PROFILEFUNCTION();
@@ -2213,22 +2219,29 @@ RDResult ReplayController::PostCreateInit(IReplayDriver *device, RDCFile *rdc)
   m_pDevice = device;
 
   m_APIProps = m_pDevice->GetAPIProperties();
+  std::cout << "DEBUG P: 2\n";
 
   GCNISA::CacheSupport(m_APIProps.pipelineType);
+  std::cout << "DEBUG P: 3\n";
 
   RDResult result = m_pDevice->ReadLogInitialisation(rdc, false);
+  std::cout << "DEBUG P: 3.1\n";
   FatalErrorCheck();
+  std::cout << "DEBUG P: 3.2\n";
   if(m_FatalError != ResultCode::Succeeded)
     return m_FatalError;
 
+  std::cout << "DEBUG P: 4\n";
   m_pDevice->SetPipelineStates(&m_D3D11PipelineState, &m_D3D12PipelineState, &m_GLPipelineState,
                                &m_VulkanPipelineState);
 
+  std::cout << "DEBUG P: 5\n";
   GCNISA::GetTargets(m_APIProps.pipelineType, m_pDevice->GetDriverInfo(), m_GCNTargets);
 
   if(result != ResultCode::Succeeded)
     return result;
 
+  std::cout << "DEBUG P: 6\n";
   m_Buffers = m_pDevice->GetBuffers();
   FatalErrorCheck();
   m_Textures = m_pDevice->GetTextures();
@@ -2237,6 +2250,7 @@ RDResult ReplayController::PostCreateInit(IReplayDriver *device, RDCFile *rdc)
   FatalErrorCheck();
   m_DescriptorStores = m_pDevice->GetDescriptorStores();
   FatalErrorCheck();
+  std::cout << "DEBUG P: 7\n";
 
   m_FrameRecord = m_pDevice->GetFrameRecord();
   FatalErrorCheck();
@@ -2253,6 +2267,7 @@ RDResult ReplayController::PostCreateInit(IReplayDriver *device, RDCFile *rdc)
   FetchPipelineState(m_Actions.back()->eventId);
   FatalErrorCheck();
 
+  std::cout << "DEBUG P: 8\n";
   return m_FatalError;
 }
 

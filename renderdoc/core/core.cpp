@@ -40,6 +40,7 @@
 #include "strings/string_utils.h"
 #include "superluminal/superluminal.h"
 #include "crash_handler.h"
+#include <iostream>
 
 #include "api/replay/renderdoc_tostr.inl"
 
@@ -1979,7 +1980,10 @@ RDResult RenderDoc::CreateReplayDriver(RDCFile *rdc, const ReplayOptions &opts, 
   if(driver == NULL)
     return ResultCode::InvalidParameter;
 
+  std::cout << "DEBUG: Core entering CreateReplayDriver\n";
+
   SyncAvailableGPUThread();
+  std::cout << "DEBUG: 2\n";
 
   // allows passing NULL rdcfile as 'I don't care, give me a proxy driver of any type'
   if(rdc == NULL)
@@ -1990,6 +1994,7 @@ RDResult RenderDoc::CreateReplayDriver(RDCFile *rdc, const ReplayOptions &opts, 
     RETURN_ERROR_RESULT(ResultCode::APIUnsupported,
                         "Request for proxy replay device, but no replay providers are available.");
   }
+  std::cout << "DEBUG: 3\n";
 
   RDCDriver driverType = rdc->GetDriver();
 
@@ -1997,9 +2002,14 @@ RDResult RenderDoc::CreateReplayDriver(RDCFile *rdc, const ReplayOptions &opts, 
   if(driverType == RDCDriver::Image)
     return IMG_CreateReplayDevice(rdc, driver);
 
+  std::cout << "DEBUG: 4\n";
   if(m_ReplayDriverProviders.find(driverType) != m_ReplayDriverProviders.end())
+  {
+  std::cout << "DEBUG: 4.1\n";
     return m_ReplayDriverProviders[driverType](rdc, opts, driver);
+  }
 
+  std::cout << "DEBUG: 5\n";
   RDCERR("Unsupported replay driver requested: %s", ToStr(driverType).c_str());
   return ResultCode::APIUnsupported;
 }

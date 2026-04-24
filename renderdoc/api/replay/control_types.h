@@ -334,6 +334,7 @@ struct MeshDisplay
 uint32_t uvFormat = 0;
 float meshAmbient = 1.5;
 uint32_t uvBinding = 0;
+bool flipV = false;
 mutable float customMatrix[16];
 mutable bool customMatrixSet = false;
 

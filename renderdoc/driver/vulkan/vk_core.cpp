@@ -25,6 +25,7 @@
 #include "vk_core.h"
 #include <ctype.h>
 #include <algorithm>
+#include <iostream>
 #include "core/settings.h"
 #include "driver/ihv/amd/amd_rgp.h"
 #include "driver/ihv/nv/nv_aftermath.h"
@@ -3550,14 +3551,19 @@ void WrappedVulkan::AddResourceCurChunk(ResourceId id)
 
 RDResult WrappedVulkan::ReadLogInitialisation(RDCFile *rdc, bool storeStructuredBuffers)
 {
+  std::cout << "DEBUG L: 1\n";
   int sectionIdx = rdc->SectionIndex(SectionType::FrameCapture);
+  std::cout << "DEBUG L: 2\n";
 
   GetResourceManager()->SetState(m_State);
+  std::cout << "DEBUG L: 3\n";
 
   if(sectionIdx < 0)
     RETURN_ERROR_RESULT(ResultCode::FileCorrupted, "File does not contain captured API data");
 
+  std::cout << "DEBUG L: 4\n";
   StreamReader *reader = rdc->ReadSection(sectionIdx);
+  std::cout << "DEBUG L: 5\n";
 
   if(IsStructuredExporting(m_State))
   {
@@ -3570,6 +3576,7 @@ RDResult WrappedVulkan::ReadLogInitialisation(RDCFile *rdc, bool storeStructured
     m_TimeBase = rdc->GetTimestampBase();
     m_TimeFrequency = rdc->GetTimestampFrequency();
   }
+  std::cout << "DEBUG L: 6\n";
 
   if(reader->IsErrored())
   {
@@ -3577,6 +3584,7 @@ RDResult WrappedVulkan::ReadLogInitialisation(RDCFile *rdc, bool storeStructured
     delete reader;
     return result;
   }
+  std::cout << "DEBUG L: 7\n";
 
   ReadSerialiser ser(reader, Ownership::Stream);
 
@@ -3590,6 +3598,7 @@ RDResult WrappedVulkan::ReadLogInitialisation(RDCFile *rdc, bool storeStructured
   m_StoredStructuredData->version = m_StructuredFile->version = m_SectionVersion;
 
   ser.SetVersion(m_SectionVersion);
+  std::cout << "DEBUG L: 8\n";
 
   int chunkIdx = 0;
 
@@ -3610,6 +3619,7 @@ RDResult WrappedVulkan::ReadLogInitialisation(RDCFile *rdc, bool storeStructured
   ScopedDebugMessageSink *sink = NULL;
   if(m_ReplayOptions.apiValidation)
     sink = new ScopedDebugMessageSink(this);
+  std::cout << "DEBUG L: 9\n";
 
   for(;;)
   {
@@ -3620,26 +3630,33 @@ RDResult WrappedVulkan::ReadLogInitialisation(RDCFile *rdc, bool storeStructured
     VulkanChunk context = ser.ReadChunk<VulkanChunk>();
 
     chunkIdx++;
+    std::cout << "DEBUG L: 10\n";
 
     if(reader->IsErrored())
     {
       SAFE_DELETE(sink);
       return RDResult(ResultCode::APIDataCorrupted, ser.GetError().message);
     }
+    std::cout << "DEBUG L: 10.1\n";
 
     size_t firstMessage = 0;
     if(sink)
       firstMessage = sink->msgs.size();
+    std::cout << "DEBUG L: 10.2\n";
 
     bool success = ProcessChunk(ser, context);
+    std::cout << "DEBUG L: 10.3\n";
 
     ser.EndChunk();
+    std::cout << "DEBUG L: 10.4\n";
 
     if(reader->IsErrored())
     {
       SAFE_DELETE(sink);
+      std::cout << "DEBUG L: 10.5\n";
       return RDResult(ResultCode::APIDataCorrupted, ser.GetError().message);
     }
+    std::cout << "DEBUG L: 11\n";
 
     // if there wasn't a serialisation error, but the chunk didn't succeed, then it's an API replay
     // failure.
@@ -3664,6 +3681,7 @@ RDResult WrappedVulkan::ReadLogInitialisation(RDCFile *rdc, bool storeStructured
             "via `File` -> `Open Capture with Options`";
       }
 
+      std::cout << "DEBUG L: 12\n";
       SAFE_DELETE(sink);
       m_FailedReplayResult.message = rdcstr(m_FailedReplayResult.message) + extra;
       return m_FailedReplayResult;
@@ -3681,6 +3699,7 @@ RDResult WrappedVulkan::ReadLogInitialisation(RDCFile *rdc, bool storeStructured
       RenderDoc::Inst().SetProgress(LoadProgress::FileInitialRead,
                                     float(offsetEnd) / float(reader->GetSize()));
     }
+    std::cout << "DEBUG L: 13\n";
 
     if((SystemChunk)context == SystemChunk::CaptureScope)
     {
@@ -3716,6 +3735,7 @@ RDResult WrappedVulkan::ReadLogInitialisation(RDCFile *rdc, bool storeStructured
           m_ExternalQueues[m_QueueFamilyIdx].queue = m_Queue;
         }
       }
+      std::cout << "DEBUG L: 14\n";
 
       m_FrameReader = new StreamReader(reader, frameDataSize);
 
@@ -3731,9 +3751,11 @@ RDResult WrappedVulkan::ReadLogInitialisation(RDCFile *rdc, bool storeStructured
       }
     }
 
+    std::cout << "DEBUG L: 15\n";
     chunkInfos[context].total += timer.GetMilliseconds();
     chunkInfos[context].totalsize += offsetEnd - offsetStart;
     chunkInfos[context].count++;
+    std::cout << "DEBUG L: 16\n";
 
     if((SystemChunk)context == SystemChunk::CaptureScope || reader->IsErrored() || reader->AtEnd())
       break;
@@ -3763,6 +3785,7 @@ RDResult WrappedVulkan::ReadLogInitialisation(RDCFile *rdc, bool storeStructured
           GetChunkName((uint32_t)it->first).c_str(), uint32_t(it->first));
     }
   }
+  std::cout << "DEBUG L: 17\n";
 
   // steal the structured data for ourselves
   m_StructuredFile->Swap(*m_StoredStructuredData);
@@ -3810,6 +3833,7 @@ RDResult WrappedVulkan::ReadLogInitialisation(RDCFile *rdc, bool storeStructured
 
   FreeAllMemory(MemoryScope::IndirectReadback);
 
+  std::cout << "DEBUG L: 18\n";
   return ResultCode::Succeeded;
 }
 
@@ -4379,6 +4403,7 @@ void WrappedVulkan::CopyInternalDescriptor(VkCommandBuffer unwrappedCmdBuf, VkBu
 
 bool WrappedVulkan::ProcessChunk(ReadSerialiser &ser, VulkanChunk chunk)
 {
+      std::cout << "DEBUG ProcessChunk: 1 - "<< (uint32_t)chunk <<"\n";
   switch(chunk)
   {
     case VulkanChunk::vkEnumeratePhysicalDevices:
@@ -4695,6 +4720,8 @@ bool WrappedVulkan::ProcessChunk(ReadSerialiser &ser, VulkanChunk chunk)
       return Serialise_vkCmdSetDiscardRectangleEXT(ser, VK_NULL_HANDLE, 0, 0, NULL);
     case VulkanChunk::DeviceMemoryRefs:
     {
+            std::cout << "DEBUG DeviceMemoryRefs ProcessChunk: A - "<< (uint32_t)chunk <<"\n";
+
       rdcarray<MemRefInterval> data;
       return GetResourceManager()->Serialise_DeviceMemoryRefs(ser, data);
     }
@@ -4738,9 +4765,15 @@ bool WrappedVulkan::ProcessChunk(ReadSerialiser &ser, VulkanChunk chunk)
     case VulkanChunk::vkCmdBindVertexBuffers2:
       return Serialise_vkCmdBindVertexBuffers2(ser, VK_NULL_HANDLE, 0, 0, NULL, NULL, NULL, NULL);
     case VulkanChunk::vkCmdSetDepthTestEnable:
+    {
+      std::cout << "DEBUG vkCmdSetDepthTestEnable ProcessChunk: A - "<< (uint32_t)chunk <<"\n";
       return Serialise_vkCmdSetDepthTestEnable(ser, VK_NULL_HANDLE, VK_FALSE);
+    }
     case VulkanChunk::vkCmdSetDepthWriteEnable:
+    {
+      std::cout << "DEBUG vkCmdSetDepthWriteEnable ProcessChunk: A - "<< (uint32_t)chunk <<"\n";
       return Serialise_vkCmdSetDepthWriteEnable(ser, VK_NULL_HANDLE, VK_FALSE);
+    }
     case VulkanChunk::vkCmdSetDepthCompareOp:
       return Serialise_vkCmdSetDepthCompareOp(ser, VK_NULL_HANDLE, VK_COMPARE_OP_MAX_ENUM);
     case VulkanChunk::vkCmdSetDepthBoundsTestEnable:

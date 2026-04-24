@@ -23,6 +23,7 @@
  ******************************************************************************/
 
 #include "vk_resources.h"
+#include <iostream>
 
 ImageSubresourceRange ImageInfo::FullRange() const
 {
@@ -828,8 +829,12 @@ void ImageBarrierSequence::ExtractLastUnwrappedBatchForQueue(uint32_t queueFamil
 
 ImageState ImageState::InitialState() const
 {
+  std::cout << "DEBUG: InitialState requested for handle " << wrappedHandle << "\n";
+
   ImageState result(wrappedHandle, GetImageInfo(), eFrameRef_Unknown);
+  std::cout << "DEBUG: InitialState calling overloaded for handle " << wrappedHandle << "\n";
   InitialState(result);
+  std::cout << "DEBUG: InitialState completed for handle " << wrappedHandle << "\n";
   return result;
 }
 
