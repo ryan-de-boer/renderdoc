@@ -58,6 +58,7 @@
 #include "ui_EventBrowser.h"
 #include <sstream>
 #include <iostream>
+#include <cstring> // Required for memset
 //#include "../../renderdoc/maths/matrix.h"
 //#include "../../renderdoc/maths/camera.h"
 #include <cmath>
@@ -5841,6 +5842,17 @@ float ident[16] = {
     0.00f, 0.00f, 0.00f, 1.00f
 };
 
+//tmp testing ident
+// customMatrixSet2 =true;
+// // 1. Zero out the entire array
+// std::memset(customMatrix2, 0, sizeof(customMatrix2));
+
+// // 2. Set the diagonal to 1
+// customMatrix2[0] = 1.0f;  // Row 0, Col 0
+// customMatrix2[5] = 1.0f;  // Row 1, Col 1
+// customMatrix2[10] = 1.0f; // Row 2, Col 2
+// customMatrix2[15] = 1.0f; // Row 3, Col 3
+//tmp testing ident
 
 // // Get SSBO world matrix BEFORE BlockInvoke (on UI thread)
 // ResourceId worldMatrixBufferId;
@@ -6396,7 +6408,7 @@ if(vbs.size() > 0 && vbs[0].resourceId != ResourceId())
 
 
             // Get VSOut post-transform data
-//            MeshFormat posvs = r->GetPostVSData(0, 0, MeshDataStage::VSOut);
+            //MeshFormat posvs = r->GetPostVSData(0, 0, MeshDataStage::VSOut);
             MeshFormat posvs = r->GetPostVSData(0, 0, MeshDataStage::VSIn);
 
             // Get the format for the Normal attribute from Input
@@ -6635,7 +6647,11 @@ mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
 //mat4mul(ident, u_vx, u_vy, u_vz, 1.0f, ox, oy, oz, ow);
 //mat4mul(ident, u_nx, u_ny, u_nz, 1.0f, onx, ony, onz, onw);
 
-               s << "v " << ox << " " << oy << " " << oz << "\n"; //blender fix
+               s << "v " << ox*0.5f << " " << oy*0.5f << " " << oz << "\n"; //blender fix
+
+//test org v / w
+//               s << "v " << pos[0]/pos[3] << " " << pos[1]/pos[3] << " " << pos[2]/pos[3] << "\n";
+
 
                if (hasNormal)
                {
@@ -6732,7 +6748,7 @@ mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
                 //     y /= w;
                 //     z /= w;
                 // }
-                s << "# "<< (i+1) <<" v_org " << pos[0] << " " << pos[1] << " " << pos[2] << "\n";
+                s << "# "<< (i+1) <<" v_org " << pos[0] << " " << pos[1] << " " << pos[2] << " " << pos[3] << "\n";
 
                 // swap Y/Z and negate X for blender coordinate system
 //                s << "v " << -x << " " << z << " " << y << "\n";

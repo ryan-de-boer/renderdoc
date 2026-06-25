@@ -46,6 +46,7 @@
 #include "Windows/Dialogs/CameraControlsDialog.h"
 #include "ui_BufferViewer.h"
 #include <iostream>
+#include <cmath> // Required for sqrtf
 
 // Assumes m_Ctx is your ICaptureContext
 // m_Config.second points to the UV attribute (_input2)
@@ -3381,6 +3382,88 @@ void BufferViewer::FillScrolls(PopulateBufferData *bufdata)
   }
 }
 
+//try better guess projection code
+
+float GetLength(const Vec3f& v)
+{
+    return sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+}
+
+// Generate a projection matrix similar to DirectX PerspectiveFovLH
+MMatrix4f GenerateProjection(float fovYDeg, float aspect, float near, float far) {
+    float f = 1.0f / tanf((fovYDeg * 3.14159f / 180.0f) / 2.0f);
+    
+    MMatrix4f m = MMatrix4f::Identity();
+    m[0]  = f / aspect;        // [0][0]
+    m[5]  = f;                 // [1][1]
+
+    //try swapping
+//    m[0]  = f;        // [0][0]
+//    m[5]  = f/aspect;                 // [1][1]
+
+    m[10] = far / (far - near);// [2][2]
+    m[14] = (-far * near) / (far - near); // [2][3]
+    m[11] = 1.0f;              // [3][2]
+    m[15] = 0.0f;              // [3][3]
+    
+    return m;
+}
+float CalculateCubeError(const MMatrix4f& WVP, const MMatrix4f& P) {
+    MMatrix4f P_inv = P.Inverse();
+    // M = WVP * P_inv (If WVP is column-major and using standard mul order)
+    MMatrix4f M = WVP.Mul(P_inv);
+
+    // Define 8 corners of a 1x1x1 cube
+    Vec4f cube[] = {
+        {0,0,0,1}, {1,0,0,1}, {0,1,0,1}, {0,0,1,1}, 
+        {1,1,0,1}, {1,0,1,1}, {0,1,1,1}, {1,1,1,1}
+    };
+    Vec3f cube3[] = {
+        {0,0,0}, {1,0,0}, {0,1,0}, {0,0,1}, 
+        {1,1,0}, {1,0,1}, {0,1,1}, {1,1,1}
+    };
+    
+    // Edges of a cube
+    int edges[][2] = {{0,1}, {0,2}, {0,3}, {1,4}, {1,5}, {2,4}, {2,6}, {3,5}, {3,6}, {4,7}, {5,7}, {6,7}};
+    
+    float totalError = 0.0f;
+    Vec3f transformed[8];
+
+    for(int i = 0; i < 8; ++i) {
+        Vec4f p = M.Transform4(cube[i]);
+        // Perspective divide
+        float w = (fabs(p.w) < 1e-9f) ? 1.0f : p.w;
+        transformed[i] = Vec3f(p.x / w, p.y / w, p.z / w);
+    }
+
+    for(auto& edge : edges) {
+        float len = GetLength(transformed[edge[0]] - transformed[edge[1]]);
+        totalError += powf(len - 1.0f, 2.0f);
+    }
+    
+    return totalError;
+}
+struct ProjectionGuess { float fov; float near; float error; };
+
+ProjectionGuess FindBestProjection(const MMatrix4f& WVP, float aspect, float far) {
+    ProjectionGuess best = { 45.0f, 0.1f, FLT_MAX };
+
+    // Search fov from 30 to 120, near plane from 0.05 to 1.0
+    for (float fov = 30.0f; fov <= 120.0f; fov += 2.0f) {
+        for (float near = 0.05f; near <= 1.0f; near += 0.1f) {
+            
+            MMatrix4f P = GenerateProjection(fov, aspect, near, far);
+            float err = CalculateCubeError(WVP, P);
+            
+            if (err < best.error) {
+                best = { fov, near, err };
+            }
+        }
+    }
+    return best;
+}
+//try better guess projection code
+
 void BufferViewer::OnEventChanged(uint32_t eventId)
 {
   PopulateBufferData *bufdata = new PopulateBufferData;
@@ -3492,6 +3575,39 @@ const float* camMatF = m_Flycam->camera()->GetCamMatrix();
     MMatrix4f guessProjInv = guessProj.Inverse();
 
     MMatrix4f mv = camMat.Mul(guessProjInv);
+
+
+    //try different
+float sixteenByNine = 1.777f;
+float fourByThree = 1.333f;
+float one = 1.0f;
+    // ProjectionGuess pg = FindBestProjection(camMat, vpWidth/vpHeight, FLT_MAX);
+    // MMatrix4f mpg = MMatrix4f::Perspective(pg.fov, pg.near, FLT_MAX, vpWidth/vpHeight);
+    ProjectionGuess pg = FindBestProjection(camMat, sixteenByNine, FLT_MAX);
+    MMatrix4f mpg = MMatrix4f::Perspective(pg.fov, pg.near, FLT_MAX, sixteenByNine);
+
+    MMatrix4f invProj = mpg.Inverse();
+
+
+    // 1. Get the View Matrix (your camMat) and invert it
+MMatrix4f invView = camMat.Inverse(); 
+
+// 2. Get the Projection Matrix and invert it
+//MMatrix4f invProj = guessProjInv; // Assuming this is already the inverse
+
+// 3. Multiply them in the correct order: InverseProjection * InverseView
+MMatrix4f invViewProj = invProj.Mul(invView); 
+mv = invViewProj;
+
+// Print the matrix to debug
+for(int i = 0; i < 16; ++i) {
+    printf("inViewProj m[%d] = %f\n", i, invViewProj[i]);
+}
+
+// 4. Now apply this to your vertices
+//Vec4f worldPos = invViewProj.Transform(Vec4f(ndcPos, 1.0f));
+    //try different
+
 
     for (int i=0;i<16;++i)
     {
@@ -8161,6 +8277,20 @@ if(mtlFile.open(QIODevice::WriteOnly | QIODevice::Text))
 }
         //save mtl
   
+        bool isNfsPayback = false;
+    std::string temp = m_Ctx.GetCaptureFilename().c_str();
+    // convert string to lowercase
+    std::transform(temp.begin(), temp.end(), temp.begin(),
+                   [](unsigned char c){ return std::tolower(c); });
+    if (temp.find("needforspeedpayback") != std::string::npos)
+    {
+      isNfsPayback = true;
+    }
+//    s << "# Capture file=" << temp << "\n";
+//    s << "# isNfsPayback=" << isNfsPayback << "\n";
+    printf("Capture file: %s\n", temp.c_str());
+    printf("isNfsPayback: %s\n", isNfsPayback?"true":"false");
+
 
         // otherwise we need to iterate over all the data ourselves
         const BufferConfiguration &config = model->getConfig();
@@ -8188,6 +8318,15 @@ for(int i = 0; i < model->columnCount() - 1; i++)
     QString colName = model->headerData(i, Qt::Horizontal, Qt::DisplayRole).toString();
     QString nextColName = model->headerData(i+1, Qt::Horizontal, Qt::DisplayRole).toString();
     
+    printf("Current ColName: %s\n", colName.toStdString().c_str());
+    printf("Next ColName: %s\n", nextColName.toStdString().c_str());
+
+     if(isNfsPayback && colName.endsWith(lit("TEXCOORD2.x")) && nextColName.endsWith(lit("TEXCOORD2.y")))
+     {
+        uvColStart = i;
+        break;
+     }
+
  if(colName.endsWith(lit(".x")) && nextColName.endsWith(lit(".y")))
 {
     // check there's no .z after
@@ -8240,6 +8379,11 @@ s << "# Normal col start=" << normalColStart << "\n";
 
 s << "mtllib " << QFileInfo(filename).baseName() << ".mtl\n";
 s << "usemtl material0\n";
+
+// 1. CREATE A GEOMETRY CACHE STRUCTURE
+struct VertexPos { float x, y, z; };
+std::vector<VertexPos> positionCache;
+positionCache.reserve(model->rowCount());
 
         if(m_MeshView || !m_IsBuffer || config.buffers[0]->size() >= m_ByteSize)
         {
@@ -8299,6 +8443,11 @@ float vz = model->data(model->index(row, 4), Qt::DisplayRole).toString().trimmed
 
 // swap Y and Z, negate X (coordinate system conversion)
 s << -vx << " " << vz << " " << vy << "\n";
+
+  VertexPos p;
+  p.x = -vx; p.y = vz; p.z = vy;
+  positionCache.push_back(p);
+
           }
 
           s << "\n";
@@ -8346,7 +8495,9 @@ s << "vn " << -nx << " " << nz << " " << ny << "\n";
 float tu = model->data(model->index(row, uvColStart),   Qt::DisplayRole).toString().trimmed().toFloat();
 float tv = model->data(model->index(row, uvColStart+1), Qt::DisplayRole).toString().trimmed().toFloat();
 // flip V
+s << "# vt_org " << tu << " " << tv << "\n";
 s << "vt " << tu << " " << (1.0f-tv) << "\n";
+//s << "vt " << tu << " " << tv << "\n";
 
 
 
@@ -8378,20 +8529,173 @@ s << "vt " << tu << " " << (1.0f-tv) << "\n";
           s << "\n";
           s << "# Faces (triangles)\n";
 
-          for (int i=1;i<=model->rowCount();i+=3)
+          // Grab the true GPU graphics pipeline state from the core context
+          const PipeState &pipe = m_Ctx.CurPipelineState();
+          // GetPipelineState();
+  
+          // Query the actual topology used during this drawcall
+          Topology drawTopology = pipe.GetPrimitiveTopology();
+        
+  // Extract the true draw execution action properties from the context
+  const ActionDescription *action = m_Ctx.CurAction();
+
+          //how about triangle strip?
+          //check config.topology
+          bool isTriangleStrip = (drawTopology == Topology::TriangleStrip);
+          int rowCount = model->rowCount();
+          s << "# pipe.GetTopology(): " << (int)drawTopology << "\n";
+
+          if (isTriangleStrip)
           {
-            //f 1/1/1 2/2/2 3/3/3
-            s <<"f "<< 
-                 i<<"/"<<i<<"/"<<i<<" "<<
-                (i+1)<<"/"<<(i+1)<<"/"<<(i+1)<<" "<<
-                (i+2)<<"/"<<(i+2)<<"/"<<(i+2)<<"\n";
+            s << "# Triangle Strip\n";
+
+            // // A triangle strip needs at least 3 vertices to form a single face
+            // int stripFaceCount = 0;
+            // for (int i = 1; i <= rowCount - 2; ++i)
+            // {
+            //   // Non-indexed rows are sequential
+            //   int v0 = i;
+            //   int v1 = i + 1;
+            //   int v2 = i + 2;
+
+            //   // CATCH DEGENERATE STRIP BREAKS:
+            //   // If any rows are identical (or evaluate to a zero-area face), 
+            //   // it means the engine intentionally injected a strip break here.
+            //   if (v0 == v1 || v1 == v2 || v0 == v2)
+            //   {
+            //     // Reset your local winding counter so the next valid strip starts fresh
+            //     stripFaceCount = 0; 
+            //     continue;
+            //   }
+
+            //   // Alternate the winding order on every even triangle to prevent flipped normals
+            //   // (Since 'i' starts at 1, even values of 'i' represent the alternating faces)
+            //   // Handle alternating winding order
+            //   if (stripFaceCount % 2 != 0)
+            //   {
+            //     std::swap(v1, v2);
+            //   }
+            //   stripFaceCount++;
+
+            //   // Write out the face matching the exact format of your triangle list loop
+            //   s << "f " << 
+            //       v0 << "/" << v0 << "/" << v0 << " " <<
+            //       v1 << "/" << v1 << "/" << v1 << " " <<
+            //       v2 << "/" << v2 << "/" << v2 << "\n";
+            // }
+
+
+  int faceCounter = 0;
+  int rowCount = model->rowCount();
+
+  for (int i = 0; i < rowCount - 2; ++i)
+  {
+    // Define the absolute, linear 1-based indices relative to the current row pass
+    int obj_v0 = i + 1;
+    int obj_v1 = i + 2;
+    int obj_v2 = i + 3;
+
+    // Apply the standard hardware triangle strip winding orientation flip.
+    // We execute this flip strictly on a sequential basis for every row in the buffer,
+    // NEVER resetting it to 0 inside condition blocks.
+    if (faceCounter % 2 == 1)
+    {
+      std::swap(obj_v1, obj_v2);
+    }
+
+    // Advance the tracking counter globally on every loop increment 
+    // to match the hardware rasterizer alignment perfectly
+    faceCounter++;
+
+    // Write out the face block layout cleanly to the file stream.
+    // Let duplicate padding elements print natively—they will resolve into
+    // harmless zero-area single-point dots that Blender natively bypasses,
+    // while perfectly preserving the winding synchronization for the next sub-mesh!
+    s << "f " << obj_v0 << "/" << obj_v0 << "/" << obj_v0 << " "
+              << obj_v1 << "/" << obj_v1 << "/" << obj_v1 << " "
+              << obj_v2 << "/" << obj_v2 << "/" << obj_v2 << "\n";
+  }
+  
+
+  /*
+  //works and use python script to import it, using previous code though
+  //make sure you edit the texture and cut out the bamboo leaving transparent!
+  
+  const ActionDescription *action = m_Ctx.CurAction();
+//  const PipeState &pipe = m_Ctx.GetPipelineState();
+  if (action == nullptr) return;
+
+  // Extract stack configuration objects safely
+  BoundVBuffer vbuffer = pipe.GetVBuffers()[0]; 
+  BoundVBuffer ibuffer = pipe.GetIBuffer();     
+
+  // We will pass these out of the replay lambda thread to write them to disk
+  bytebuf vertexBytes;
+  bytebuf indexBytes;
+
+  // INVOKE THE REPLAY THREAD SAFELY:
+  // BlockInvoke forces RenderDoc to securely pass the true IReplayController pointer (r)
+  m_Ctx.Replay().BlockInvoke([&](IReplayController *r) {
+    if (r == nullptr) return;
+
+    if (vbuffer.resourceId != ResourceId())
+    {
+      vertexBytes = r->GetBufferData(vbuffer.resourceId, vbuffer.byteOffset, vbuffer.byteSize);
+    }
+
+    if (ibuffer.resourceId != ResourceId())
+    {
+      indexBytes = r->GetBufferData(ibuffer.resourceId, ibuffer.byteOffset, ibuffer.byteSize);
+    }
+  });
+
+  // 4. WRITE THE RAW ARRAYS STRAIGHT TO DISK
+  FILE *fVert = fopen("raw_vertices.bin", "wb");
+  if (fVert && !vertexBytes.empty()) {
+    fwrite(vertexBytes.data(), 1, vertexBytes.size(), fVert);
+    fclose(fVert);
+  }
+
+  FILE *fIdx = fopen("raw_indices.bin", "wb");
+  if (fIdx && !indexBytes.empty()) {
+    fwrite(indexBytes.data(), 1, indexBytes.size(), fIdx);
+    fclose(fIdx);
+  }
+  
+  // 5. EXPORT AN AUTO-METADATA SHEET FOR THE PYTHON SCRIPT
+  FILE *fMeta = fopen("mesh_metadata.txt", "w");
+  if (fMeta) {
+    fprintf(fMeta, "IndexCount: %u\n", action->numIndices);
+    fprintf(fMeta, "VertexOffset: %d\n", action->vertexOffset);
+    fprintf(fMeta, "IndexOffset: %u\n", action->indexOffset);
+//    fprintf(fMeta, "IndexStride: %u\n", pipe.GetIndexByteWidth()); 
+    fprintf(fMeta, "VertexStride: %u\n", vbuffer.byteStride);
+    fclose(fMeta);
+  }
+*/
+
+          }
+          else
+          {
+            s << "# Triangle List\n";
+            for (int i=1;i<=model->rowCount();i+=3)
+            {
+              //f 1/1/1 2/2/2 3/3/3
+              s <<"f "<< 
+                   i<<"/"<<i<<"/"<<i<<" "<<
+                  (i+1)<<"/"<<(i+1)<<"/"<<(i+1)<<" "<<
+                  (i+2)<<"/"<<(i+2)<<"/"<<(i+2)<<"\n";
 
 
                 //         s <<"f "<< 
                 //  i<<"/"<<i<<" "<<
                 // (i+1)<<"/"<<(i+1)<<" "<<
                 // (i+2)<<"/"<<(i+2)<<"\n";
+            }
           }
+
+
+        
 
 
         }

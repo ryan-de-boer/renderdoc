@@ -4403,7 +4403,7 @@ void WrappedVulkan::CopyInternalDescriptor(VkCommandBuffer unwrappedCmdBuf, VkBu
 
 bool WrappedVulkan::ProcessChunk(ReadSerialiser &ser, VulkanChunk chunk)
 {
-      std::cout << "DEBUG ProcessChunk: 1 - "<< (uint32_t)chunk <<"\n";
+//      std::cout << "DEBUG ProcessChunk: 1 - "<< (uint32_t)chunk <<"\n";
   switch(chunk)
   {
     case VulkanChunk::vkEnumeratePhysicalDevices:

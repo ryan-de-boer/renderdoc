@@ -26,10 +26,17 @@
 #pragma once
 
 class Vec3f;
+class Vec4f;
 class Quatf;
 struct AxisMapping;
 
 #include <string.h>
+
+//  float Dot(const Vec3f &in, const Vec3f &o) const { return in.x * o.x + in.y * o.y + in.z * o.z; }
+
+//  float Length(const Vec3f &in) const { return sqrtf(Dot(in, in)); }
+
+
 
 class MMatrix4f
 {
@@ -71,6 +78,7 @@ public:
   MMatrix4f Mul(const MMatrix4f &o) const;
 
   Vec3f Transform(const Vec3f &v, const float w = 1.0f) const;
+  Vec4f Transform4(const Vec4f &v) const;
 
   const float *Data() const { return &f[0]; }
   void SetFrom(float data[16]) { memcpy(f, data, sizeof(MMatrix4f)); }
@@ -236,6 +244,16 @@ Vec3f MMatrix4f::Transform(const Vec3f &v, const float w) const
                (*this)[matIdx(3, 2)] * v.z + (*this)[matIdx(3, 3)] * w;
 
   return vout * (1.0f / wout);
+}
+
+Vec4f MMatrix4f::Transform4(const Vec4f &v) const
+{
+  return Vec4f(
+      (*this)[matIdx(0, 0)] * v.x + (*this)[matIdx(0, 1)] * v.y + (*this)[matIdx(0, 2)] * v.z + (*this)[matIdx(0, 3)] * v.w,
+      (*this)[matIdx(1, 0)] * v.x + (*this)[matIdx(1, 1)] * v.y + (*this)[matIdx(1, 2)] * v.z + (*this)[matIdx(1, 3)] * v.w,
+      (*this)[matIdx(2, 0)] * v.x + (*this)[matIdx(2, 1)] * v.y + (*this)[matIdx(2, 2)] * v.z + (*this)[matIdx(2, 3)] * v.w,
+      (*this)[matIdx(3, 0)] * v.x + (*this)[matIdx(3, 1)] * v.y + (*this)[matIdx(3, 2)] * v.z + (*this)[matIdx(3, 3)] * v.w
+  );
 }
 
 const Vec3f MMatrix4f::GetPosition() const
