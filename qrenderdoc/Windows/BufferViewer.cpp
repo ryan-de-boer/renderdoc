@@ -52,12 +52,18 @@
 // m_Config.second points to the UV attribute (_input2)
 
 #include <iostream>
+#include <fstream>
 #include <cstdint>
 //#include "../../renderdoc/replay/renderdoc_replay.h"  // for ReplayCreateReplayDevice
 //#include "../../qrenderdoc/Windows/BufferViewer.h"    // for BoundVBuffer, rdcarray
 //#include "/home/ryan-de-boer/renderdoc_src/renderdoc/renderdoc/api/replay/data_types.h"
 
 #include "/home/ryan-de-boer/renderdoc_src/renderdoc/renderdoc/maths/matrix_min.cpp"
+
+#include <string>
+#include <sstream>
+#include <iomanip>
+#include "MainWindow.h"
 
 // void BufferViewer::PrintFirst5UVs(ICaptureContext &m_Ctx)
 // {
@@ -104,6 +110,7 @@
 //     }
 // }
 
+std::string ShowVulkanShaderMD5Hash(ICaptureContext &ctx);
 
 struct FixedVarTag
 {
@@ -6224,6 +6231,14 @@ const PipeState &pipe = m_Ctx.CurPipelineState();
 //const rdcarray<UsedDescriptor> &descs = pipe.GetAllUsedDescriptors();
 
 
+int findIndex = 0;
+int index = 0;
+// std::string hash = ShowVulkanShaderMD5Hash(m_Ctx);
+// if (hash=="fs.affa68673501670b746b26c5e6f3b001")
+// {
+//   // SnowRunner ute body diffuse.
+//   findIndex = 15;
+// }
 
 ResourceId firstTexture;
 
@@ -6236,8 +6251,15 @@ for(const UsedDescriptor &u : pipe.GetAllUsedDescriptors())
   {
     if(d.resource != ResourceId())
     {
-      firstTexture = d.resource;
-      break;
+//      firstTexture = d.resource;
+
+if (findIndex==index)
+{
+  firstTexture = d.resource;
+}
+
+index++;
+//      break;
     }
   }
 }
@@ -8091,6 +8113,259 @@ void SaveTexture(QString objFilename)
 
 }
 
+std::string ShowVulkanShaderMD5Hash(ICaptureContext &ctx)
+{
+      std::string resultHash = "";
+
+      // RenderDoc UI work runs on a separate thread from replay loop tasks.
+    // BlockInvoke forces a lambda to execute safely on the core replay thread.
+    ctx.Replay().BlockInvoke([&](IReplayController *controller) {
+        if (!controller) return;
+
+    // 1. Get the current unified pipeline state interface
+    const PipeState &pipeState = controller->GetPipelineState();
+
+    // 2. Retrieve the shader reflection data for the Pixel/Fragment stage
+    const ShaderReflection* shaderReflection = pipeState.GetShaderReflection(ShaderStage::Pixel);
+
+    if (shaderReflection != nullptr)
+    {
+        // 1. Get the list of disassembly targets available for this shader 
+        // (For Vulkan, this will typically include "SPIR-V")
+        rdcarray<rdcstr> targets = controller->GetDisassemblyTargets(true);
+        rdcstr preferredTarget = targets.empty() ? "" : targets[0];
+
+        // 2. Request the full disassembly text string from RenderDoc's compiler interface
+        rdcstr disassembly = controller->DisassembleShader(
+            pipeState.GetGraphicsPipelineObject(), 
+            shaderReflection, 
+            preferredTarget
+        );
+
+        std::string disasmStr = disassembly.c_str();
+        std::string finalHash = "Hash Not Found";
+//        std::string finalHash = disasmStr;
+
+        // 3. RenderDoc embeds the MD5 hash on the very first few lines of the disassembly text
+        // We look for the "Shader Hash:" token indicator
+        size_t hashPos = disasmStr.find("Source(Unknown, 0, file: fs.");
+        if (hashPos != std::string::npos)
+        {
+            // Advance past "Shader Hash: " text block (12 characters)
+            size_t startIdx = hashPos + std::string("Source(Unknown, 0, file: fs.").length();
+            while (startIdx < disasmStr.length() && (disasmStr[startIdx] == ' ' || disasmStr[startIdx] == '\t' || disasmStr[startIdx] == ')'))
+            {
+                startIdx++;
+            }
+
+            // Extract the 32-character hexadecimal string sequence
+            if (startIdx + 32 <= disasmStr.length())
+            {
+                finalHash = "fs." + disasmStr.substr(startIdx, 32);
+            }
+        }
+
+        // // 4. Fallback alternative: Check if your version includes the raw SPIR-V reflection details hash
+        // if (finalHash == "Hash Not Found")
+        // {
+        //     // Some specific versions pack it inside the reflection details compile flags layout string
+        //     std::string flags = shaderReflection->debugInfo.compileFlags.c_str();
+        //     size_t altPos = flags.find("Shader Hash: ");
+        //     if (altPos != std::string::npos)
+        //     {
+        //         finalHash = "fs." + flags.substr(altPos + 13, 32);
+        //     }
+        // }
+
+        // 5. Output via standard MessageBox
+
+              // RDDialog::warning(nullptr, MainWindow::tr("RenderDoc Shader MD5 Hash Found"),
+              //           MainWindow::tr(finalHash.c_str()),
+              //           QMessageBox::Ok);
+
+
+              resultHash = finalHash;
+    //               // 1. Open the file output stream
+    // std::ofstream outFile("/tmp/tmp.txt");
+
+    // // 2. Check if the file opened successfully
+    // if (outFile.is_open())
+    // {
+    //     // 3. Write the string data to the stream
+    //     outFile << finalHash;
+
+    //     // 4. Close the file stream explicitly
+    //     outFile.close();
+        
+    //     std::cout << "Successfully written to /tmp/tmp.txt" << std::endl;
+    // }
+    // else
+    // {
+    //     // Occurs if the directory doesn't exist or permissions are denied
+    //     std::cerr << "Error: Could not open or create /tmp/tmp.txt" << std::endl;
+    // }
+
+
+
+    }
+    else
+    {
+                      RDDialog::warning(nullptr, MainWindow::tr("RenderDoc Warning"),
+                        MainWindow::tr("No fragment shader bound at the selected action/draw call."),
+                        QMessageBox::Ok);
+    }
+  });
+  return resultHash;
+}
+
+// void ShowTrueShaderMD5Hash(ICaptureContext &ctx)
+// {
+//     // 1. Get the current unified pipeline state interface
+//     const PipeState &pipeState = ctx.CurPipelineState();
+
+//     // 2. Retrieve the shader reflection data for the Pixel/Fragment stage
+//     const ShaderReflection* shaderReflection = pipeState.GetShaderReflection(ShaderStage::Pixel);
+
+//     if (shaderReflection != nullptr)
+//     {
+//         // 3. Read RenderDoc's compiled shader edit details.
+//         // RenderDoc populates the exact 16-byte binary MD5 hash value here.
+//         const rdcarray<uint8_t>& hashBytes = shaderReflection->debugInfo. ->shaderDetails.debugInfo.editKey;
+
+//         // Verify that the hash contains data (MD5 payloads will fill exactly 16 bytes)
+//         if (!hashBytes.empty())
+//         {
+//             std::stringstream ss;
+//             ss << "fs.";
+            
+//             // 4. Transform the raw byte array into a 32-character lowercase hex string
+//             for (size_t i = 0; i < hashBytes.size(); ++i)
+//             {
+//                 ss << std::hex << std::setw(2) << std::setfill('0') << (int)hashBytes[i];
+//             }
+            
+//             std::string finalHashString = ss.str();
+
+//             // 5. Output via MessageBox
+
+                    
+//               RDDialog::warning(nullptr, MainWindow::tr("RenderDoc Shader MD5 Hash Found"),
+//                         MainWindow::tr(finalHashString.c_str()),
+//                         QMessageBox::Ok);
+//         }
+//         else
+//         {
+//                           RDDialog::warning(nullptr, MainWindow::tr("RenderDoc Warning"),
+//                         MainWindow::tr("Shader reflection found, but the unique binary editKey payload is empty."),
+//                         QMessageBox::Ok);
+//         }
+//     }
+//     else
+//     {
+//               RDDialog::warning(nullptr, MainWindow::tr("RenderDoc Warning"),
+//                         MainWindow::tr("No fragment shader bound at the selected action/draw call."),
+//                         QMessageBox::Ok);
+//     }
+// }
+
+void ShowFragmentShaderHashOld2(ICaptureContext &ctx)
+{
+    // 1. Get the current unified pipeline state interface
+    const PipeState &pipeState = ctx.CurPipelineState();
+
+    // 2. Retrieve the shader reflection data for the Pixel/Fragment stage
+    const ShaderReflection* shaderReflection = pipeState.GetShaderReflection(ShaderStage::Pixel);
+
+    if (shaderReflection != nullptr)
+    {
+        // RenderDoc populates the actual compiled hash string (e.g. "affa68673501670b746b26c5e6f3b001")
+        // inside the shaderDetails layout structure.
+        std::string trueHashString = "";
+        
+        // Option A: Extract from the internal compile details string
+        if (!shaderReflection->debugInfo.compileFlags.flags.size()==0)
+        {
+            // If debug info properties are present, RenderDoc strings contain it.
+            // But the absolute safest way to grab the exact clean hash is using its unique internal resource naming map:
+            trueHashString = ctx.GetResourceName(shaderReflection->resourceId).c_str();
+        }
+        
+        // Option B: If Option A is empty, look at RenderDoc's built-in Resource Name registry.
+        // Because RenderDoc natively names the asset "fs.<md5>" under the hood, 
+        // querying GetResourceName returns exactly the string shown in the UI.
+        if (trueHashString.empty() || trueHashString.find("Shader") != std::string::npos)
+        {
+            trueHashString = ctx.GetResourceName(shaderReflection->resourceId).c_str();
+        }
+
+        // If the resource name comes back as "fs.affa68673501670b746b26c5e6f3b001", use it directly.
+        // Otherwise, format it nicely.
+        std::string message = "Current Fragment Shader True Hash: \n\n" + trueHashString;
+        
+              RDDialog::warning(nullptr, MainWindow::tr("RenderDoc Shader Analysis"),
+                        MainWindow::tr(message.c_str()),
+                        QMessageBox::Ok);
+    }
+    else
+    {
+              RDDialog::warning(nullptr, MainWindow::tr("RenderDoc Warning"),
+                        MainWindow::tr("No fragment shader bound at the selected action/draw call."),
+                        QMessageBox::Ok);
+    }
+}
+
+void ShowFragmentShaderHashOLD(ICaptureContext &ctx)
+{
+    // 1. Get the current unified pipeline state interface
+    const PipeState &pipeState = ctx.CurPipelineState();
+
+    // 2. Retrieve the shader reflection data for the Pixel/Fragment stage
+    const ShaderReflection* shaderReflection = pipeState.GetShaderReflection(ShaderStage::Pixel);
+
+    if (shaderReflection != nullptr)
+    {
+        // 3. Extract the underlying 64-bit ID from RenderDoc's ResourceId struct
+        // RenderDoc's ResourceId internally contains a stable unique 64-bit integer
+        uint64_t internalId = shaderReflection->resourceId.id;
+
+        // 4. Format the ID into a clean hexadecimal string
+        std::stringstream ss;
+        ss << "fs." << std::hex << std::setw(16) << std::setfill('0') << internalId;
+        std::string hashString = ss.str();
+
+        // 5. Display the result in a standard Windows MessageBox
+        std::string message = "Current Fragment Shader Unique ID: \n\n" + hashString;
+        
+              RDDialog::warning(nullptr, MainWindow::tr("RenderDoc Shader Analysis"),
+                        MainWindow::tr(message.c_str()),
+                        QMessageBox::Ok);
+
+
+//        MessageBoxA(
+//            NULL, 
+//            message.c_str(), 
+//            "RenderDoc Shader Analysis", 
+//            MB_OK | MB_ICONINFORMATION
+//        );
+    }
+    else
+    {
+//        MessageBoxA(
+//            NULL, 
+//            "No fragment shader bound at the selected action/draw call.", 
+//            "RenderDoc Warning", 
+//            MB_OK | MB_ICONWARNING
+//        );
+
+              RDDialog::warning(nullptr, MainWindow::tr("RenderDoc Warning"),
+                        MainWindow::tr("No fragment shader bound at the selected action/draw call."),
+                        QMessageBox::Ok);
+
+
+    }
+}
+
+
 void BufferViewer::exportOBJ(const BufferExport &params)
 {
   if(!m_Ctx.IsCaptureLoaded())
@@ -8227,10 +8502,89 @@ void BufferViewer::exportOBJ(const BufferExport &params)
       }
       else if(params.format == BufferExport::OBJ)
       {
+
+                  std::string hash = ShowVulkanShaderMD5Hash(m_Ctx);
+
         //SaveTexture
   // Save texture as PNG
 TextureSave saveConfig = {};
 saveConfig.resourceId = m_Config.textureId;
+
+if(hash == "fs.affa68673501670b746b26c5e6f3b001")
+{
+  // SnowRunner ute body diffuse.
+  int findIndex = 15+1;    // FS15, but include VS0
+  int index = 0;
+  ResourceId firstTexture;
+
+  const PipeState &pipe2 = m_Ctx.CurPipelineState();
+  for(const UsedDescriptor &u : pipe2.GetAllUsedDescriptors())
+  {
+    const Descriptor &d = u.descriptor;
+
+    if(d.type == DescriptorType::ImageSampler || d.type == DescriptorType::Image)
+    {
+      if(d.resource != ResourceId())
+      {
+        if(findIndex == index)
+        {
+          firstTexture = d.resource;
+        }
+        index++;
+      }
+    }
+  }
+
+  if(firstTexture != ResourceId())
+  {
+    saveConfig.resourceId = firstTexture;
+  }
+}
+
+
+// if (hash == "fs.affa68673501670b746b26c5e6f3b001")
+// {
+//     // SnowRunner ute body diffuse.
+//     ResourceId targetTexture = ResourceId();
+//     const PipeState &pipe = m_Ctx.CurPipelineState();
+
+//     // 1. Grab the shader reflection data for the Pixel/Fragment stage
+//     const ShaderReflection *reflection = pipe.GetShaderReflection(ShaderStage::Pixel);
+
+//     if (reflection != nullptr)
+//     {
+//         // 2. Fetch the read-only resource descriptors matching this stage
+//         rdcarray<UsedDescriptor> usedDescriptors = pipe.GetReadOnlyResources(ShaderStage::Pixel);
+
+//         // 3. Loop through the resources defined in the shader using an index counter
+//         for (size_t i = 0; i < reflection->readOnlyResources.size(); ++i)
+//         {
+//             const ShaderResource &res = reflection->readOnlyResources[i];
+
+//             // FIX: fixedBindNumber maps to the layout binding slot (Slot 15)
+//             if (res.fixedBindNumber == 15)
+//             {
+//                 // FIX: The index 'i' directly corresponds to the index in usedDescriptors
+//                 if (i < usedDescriptors.size())
+//                 {
+//                     const Descriptor &d = usedDescriptors[i].descriptor;
+                    
+//                     if (d.resource != ResourceId())
+//                     {
+//                         targetTexture = d.resource;
+//                         break; // Successfully found Slot 15's active texture
+//                     }
+//                 }
+//             }
+//         }
+//     }
+
+//     if (targetTexture != ResourceId())
+//     {
+//         saveConfig.resourceId = targetTexture;
+//     }
+// }
+
 saveConfig.typeCast = CompType::Typeless;
 saveConfig.slice.sliceIndex = 0;
 saveConfig.mip = 0;
@@ -8298,6 +8652,13 @@ if(mtlFile.open(QIODevice::WriteOnly | QIODevice::Text))
         QTextStream s(f);
 
           s << "# Exported from RenderDoc OBJ\n";
+
+          s << "# Fragment Shader Hash: " << hash.c_str() << "\n";
+
+                        RDDialog::warning(nullptr, MainWindow::tr("RenderDoc Shader MD5 Hash Found"),
+                        MainWindow::tr(hash.c_str()),
+                        QMessageBox::Ok);
+
           s << "# " << model->rowCount() << " vertices\n";
 
 
@@ -8441,8 +8802,16 @@ float vx = model->data(model->index(row, 2), Qt::DisplayRole).toString().trimmed
 float vy = model->data(model->index(row, 3), Qt::DisplayRole).toString().trimmed().toFloat();
 float vz = model->data(model->index(row, 4), Qt::DisplayRole).toString().trimmed().toFloat();
 
+bool isSnowRunner = true;
+if (isSnowRunner)
+{
+s << -vx << " " << vy << " " << vz << "\n";
+}
+else
+{
 // swap Y and Z, negate X (coordinate system conversion)
 s << -vx << " " << vz << " " << vy << "\n";
+}
 
   VertexPos p;
   p.x = -vx; p.y = vz; p.z = vy;
