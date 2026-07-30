@@ -22,6 +22,9 @@
  * THE SOFTWARE.
  ******************************************************************************/
 
+#include "/home/ryan-de-boer/renderdoc_src/renderdoc/renderdoc/3rdparty/md5/md5.h"
+#include "/home/ryan-de-boer/renderdoc_src/renderdoc/renderdoc/3rdparty/md5/md5.c"
+
 #include "BufferViewer.h"
 #include <float.h>
 #include <QDoubleSpinBox>
@@ -64,6 +67,12 @@
 #include <sstream>
 #include <iomanip>
 #include "MainWindow.h"
+
+//#include "3rdparty/catch/catch.hpp" // If needed, but usually crypt.h is globally available
+//#include "common/crypto.h" // RenderDoc's internal hashing utility header
+//#include "core/core.h"
+
+
 
 // void BufferViewer::PrintFirst5UVs(ICaptureContext &m_Ctx)
 // {
@@ -6239,6 +6248,7 @@ int index = 0;
 //   // SnowRunner ute body diffuse.
 //   findIndex = 15;
 // }
+findIndex = 10; // carx street flowers maybe?
 
 ResourceId firstTexture;
 
@@ -8113,20 +8123,203 @@ void SaveTexture(QString objFilename)
 
 }
 
+std::string ShowVulkanShaderMD5HashGENERATE(ICaptureContext &ctx)
+{
+    std::string resultHash = "";
+
+    // BlockInvoke forces the lambda to execute safely on the core replay thread.
+    ctx.Replay().BlockInvoke([&](IReplayController *controller) {
+        if (!controller) return;
+
+        // 1. Get the current unified pipeline state interface
+        const PipeState &pipeState = controller->GetPipelineState();
+
+        // 2. Retrieve the shader reflection data for the Pixel/Fragment stage
+        const ShaderReflection* shaderReflection = pipeState.GetShaderReflection(ShaderStage::Pixel);
+
+        if (shaderReflection != nullptr)
+        {
+            // 3. Extract raw binary bytecode directly from the reflection structure
+            const rdcarray<byte> &rawBytes = shaderReflection->rawBytes;
+
+            if (!rawBytes.empty())
+            {
+                // 4. Initialize and run RenderDoc's local MD5 context structures
+                MD5_CTX md5Context;
+                unsigned char digest[16]; // Corrected to hold the full 16-byte MD5 signature
+                
+                MD5_Init(&md5Context);
+                MD5_Update(&md5Context, rawBytes.data(), (unsigned long)rawBytes.size());
+                MD5_Final(digest, &md5Context);
+
+                // 5. Convert the 16-byte digest to a hexadecimal string
+                std::stringstream ss;
+                ss << "fs.";
+                for(int i = 0; i < 16; ++i)
+                {
+                    ss << std::hex << std::setw(2) << std::setfill('0') << (int)digest[i];
+                }
+                resultHash = ss.str();
+            }
+            else
+            {
+                resultHash = "Error: Raw shader bytes are empty";
+            }
+        }
+        else
+        {
+            resultHash = "Error: No fragment shader bound";
+        }
+    });
+
+    return resultHash;
+}
+
+std::string ShowVulkanShaderMD5HashGENERATENoBlock(ICaptureContext &ctx)
+{
+    std::string resultHash = "";
+
+    // // BlockInvoke forces the lambda to execute safely on the core replay thread.
+    // ctx.Replay().BlockInvoke([&](IReplayController *controller) {
+    //     if (!controller) return;
+
+            // Direct access because the thread is already blocked/reserved for us
+//    IReplayController *controller = ctx.Replay().GetCurrentController();
+//    if (!controller) return resultHash;
+
+        // 1. Get the current unified pipeline state interface
+        const PipeState &pipeState = ctx.CurPipelineState();
+
+        // 2. Retrieve the shader reflection data for the Pixel/Fragment stage
+        const ShaderReflection* shaderReflection = pipeState.GetShaderReflection(ShaderStage::Pixel);
+
+        if (shaderReflection != nullptr)
+        {
+            // 3. Extract raw binary bytecode directly from the reflection structure
+            const rdcarray<byte> &rawBytes = shaderReflection->rawBytes;
+
+            if (!rawBytes.empty())
+            {
+                // 4. Initialize and run RenderDoc's local MD5 context structures
+                MD5_CTX md5Context;
+                unsigned char digest[16]; // Corrected to hold the full 16-byte MD5 signature
+                
+                MD5_Init(&md5Context);
+                MD5_Update(&md5Context, rawBytes.data(), (unsigned long)rawBytes.size());
+                MD5_Final(digest, &md5Context);
+
+                // 5. Convert the 16-byte digest to a hexadecimal string
+                std::stringstream ss;
+                ss << "fs.";
+                for(int i = 0; i < 16; ++i)
+                {
+                    ss << std::hex << std::setw(2) << std::setfill('0') << (int)digest[i];
+                }
+                resultHash = ss.str();
+            }
+            else
+            {
+                resultHash = "Error: Raw shader bytes are empty";
+            }
+        }
+        else
+        {
+            resultHash = "Error: No fragment shader bound";
+        }
+//    });
+
+    return resultHash;
+}
+
+
+std::string ShowVulkanShaderMD5HashNoBlock(ICaptureContext &ctx)
+{
+      std::string resultHash = "";
+std::cout << "M_1 \n";
+
+    //   // RenderDoc UI work runs on a separate thread from replay loop tasks.
+    // // BlockInvoke forces a lambda to execute safely on the core replay thread.
+    // ctx.Replay().BlockInvoke([&](IReplayController *controller) {
+    //     if (!controller) return;
+
+        // Direct access because the thread is already blocked/reserved for us
+//    IReplayController *controller = ctx.Replay().GetCurrentController();
+//    if (!controller) return resultHash;
+
+std::cout << "M_2 \n";
+
+    // 1. Get the current unified pipeline state interface
+    const PipeState &pipeState = ctx.CurPipelineState();
+std::cout << "M_3 \n";
+
+    // 2. Retrieve the shader reflection data for the Pixel/Fragment stage
+    const ShaderReflection* shaderReflection = pipeState.GetShaderReflection(ShaderStage::Pixel);
+std::cout << "M_4 \n";
+
+    if (shaderReflection != nullptr)
+    {
+        // 3. Extract the raw SPIR-V/DXBC bytecode array cache directly from the reflection structure
+        const rdcarray<byte> &rawBytes = shaderReflection->rawBytes;
+
+        if (!rawBytes.empty())
+        {
+            // 4. Initialize and run RenderDoc's internal public-domain MD5 context
+            MD5_CTX md5Context;
+            unsigned char digest[16]; // Allocated as a full 16-byte destination array
+            
+            MD5_Init(&md5Context);
+            MD5_Update(&md5Context, rawBytes.data(), (unsigned long)rawBytes.size());
+            MD5_Final(digest, &md5Context);
+
+            // 5. Convert the byte digest directly to a 32-character hex string
+            std::stringstream ss;
+            ss << "fs.";
+            for(int i = 0; i < 16; ++i)
+            {
+                ss << std::hex << std::setw(2) << std::setfill('0') << (int)digest[i];
+            }
+            resultHash = ss.str();
+        }
+        else
+        {
+            resultHash = "Error: Raw shader bytes are empty";
+        }
+    }
+    else
+    {
+        resultHash = "Error: No fragment shader bound";
+    }
+
+std::cout << "M_6 \n";
+  if (resultHash=="Hash Not Found")
+  {
+std::cout << "M_7 \n";
+    return ShowVulkanShaderMD5HashGENERATENoBlock(ctx);
+  }
+std::cout << "M_8 \n";
+
+  return resultHash;
+}
+
+
 std::string ShowVulkanShaderMD5Hash(ICaptureContext &ctx)
 {
       std::string resultHash = "";
+std::cout << "M_1 \n";
 
       // RenderDoc UI work runs on a separate thread from replay loop tasks.
     // BlockInvoke forces a lambda to execute safely on the core replay thread.
     ctx.Replay().BlockInvoke([&](IReplayController *controller) {
         if (!controller) return;
+std::cout << "M_2 \n";
 
     // 1. Get the current unified pipeline state interface
     const PipeState &pipeState = controller->GetPipelineState();
+std::cout << "M_3 \n";
 
     // 2. Retrieve the shader reflection data for the Pixel/Fragment stage
     const ShaderReflection* shaderReflection = pipeState.GetShaderReflection(ShaderStage::Pixel);
+std::cout << "M_4 \n";
 
     if (shaderReflection != nullptr)
     {
@@ -8206,6 +8399,7 @@ std::string ShowVulkanShaderMD5Hash(ICaptureContext &ctx)
     // }
 
 
+std::cout << "M_5 \n";
 
     }
     else
@@ -8215,6 +8409,15 @@ std::string ShowVulkanShaderMD5Hash(ICaptureContext &ctx)
                         QMessageBox::Ok);
     }
   });
+
+std::cout << "M_6 \n";
+  if (resultHash=="Hash Not Found")
+  {
+std::cout << "M_7 \n";
+    return ShowVulkanShaderMD5HashGENERATE(ctx);
+  }
+std::cout << "M_8 \n";
+
   return resultHash;
 }
 
@@ -8510,12 +8713,29 @@ void BufferViewer::exportOBJ(const BufferExport &params)
 TextureSave saveConfig = {};
 saveConfig.resourceId = m_Config.textureId;
 
-if(hash == "fs.affa68673501670b746b26c5e6f3b001")
+int findIndex = 0;    // Default to first texture.
+int magentaTextureIndex = -1;
+if (hash == "fs.ff2bb62d21f161f5ae327f65718e7c78")
+{
+  // SnowRunner rims diffuse.
+  findIndex = 12;
+}
+else if(hash == "fs.affa68673501670b746b26c5e6f3b001")
 {
   // SnowRunner ute body diffuse.
-  int findIndex = 15+1;    // FS15, but include VS0
+  findIndex = 15+1;    // FS15, but include VS0
+}
+else if (hash == "fs.4d6a484458807bad1919a94ddf1afa19")
+{
+  // CarX street tree.
+  findIndex = 10;    // FS10
+  magentaTextureIndex = 11;
+}
+
   int index = 0;
   ResourceId firstTexture;
+  ResourceId magentaTexture;
+  bool hasMagenta = false;
 
   const PipeState &pipe2 = m_Ctx.CurPipelineState();
   for(const UsedDescriptor &u : pipe2.GetAllUsedDescriptors())
@@ -8530,16 +8750,127 @@ if(hash == "fs.affa68673501670b746b26c5e6f3b001")
         {
           firstTexture = d.resource;
         }
+        if (magentaTextureIndex == index)
+        {
+          magentaTexture = d.resource;
+          hasMagenta = true;
+        }
         index++;
       }
     }
   }
 
+  if (hasMagenta && magentaTexture != ResourceId())
+{
+  saveConfig.typeCast = CompType::Typeless;
+saveConfig.slice.sliceIndex = 0;
+saveConfig.mip = 0;
+saveConfig.channelExtract = -1;  // all channels
+saveConfig.comp.blackPoint = 0.0f;
+saveConfig.comp.whitePoint = 1.0f;
+saveConfig.alpha = AlphaMapping::Preserve;  // keep alpha
+
+QString texFilename = filename.left(filename.length() - 4) + lit(".png");
+ResultDetails result = {ResultCode::Succeeded};
+
+    // 1. Define paths for temporary files
+    QString tmpFirstPath = texFilename + lit(".tmp_first.png");
+    QString tmpMagentaPath = texFilename + lit(".tmp_mag.png");
+
+    m_Ctx.Replay().BlockInvoke(
+        [&result, &saveConfig, firstTexture, magentaTexture, tmpFirstPath, tmpMagentaPath](IReplayController *r) 
+        { 
+            saveConfig.destType = FileType::PNG;
+            
+            // Save the base diffuse texture
+            saveConfig.resourceId = firstTexture;
+            result = r->SaveTexture(saveConfig, tmpFirstPath); 
+            if (!result.OK()) return;
+
+            // Save the magenta mask texture
+            saveConfig.resourceId = magentaTexture;
+            result = r->SaveTexture(saveConfig, tmpMagentaPath);
+        });
+
+            if (result.OK())
+    {
+        // 2. Load the textures into Qt's image processing objects
+        QImage baseImg(tmpFirstPath);
+        QImage magImg(tmpMagentaPath);
+
+        if (!baseImg.isNull() && !magImg.isNull())
+        {
+            // Convert to a format that supports a full 8-bit alpha channel
+            baseImg = baseImg.convertToFormat(QImage::Format_ARGB32);
+            magImg = magImg.convertToFormat(QImage::Format_ARGB32);
+
+            int width = qMin(baseImg.width(), magImg.width());
+            int height = qMin(baseImg.height(), magImg.height());
+
+            // 3. Process pixels (Color to Alpha logic)
+            for (int y = 0; y < height; ++y)
+            {
+                for (int x = 0; x < width; ++x)
+                {
+                    QRgb basePixel = baseImg.pixel(x, y);
+                    QRgb magPixel = magImg.pixel(x, y);
+
+                    int mR = qRed(magPixel);
+                    int mG = qGreen(magPixel);
+                    int mB = qBlue(magPixel);
+
+                    // GIMP Color-to-Alpha style matching for Magenta (255, 0, 255)
+                    // If it is a perfect match or used as a chroma-key mask:
+                    if (mR == 255 && mG == 0 && mB == 255)
+                    {
+                        // Set alpha to fully transparent (0)
+                        baseImg.setPixel(x, y, qRgba(qRed(basePixel), qGreen(basePixel), qBlue(basePixel), 0));
+                    }
+                    else 
+                    {
+                        // Optional fallback: If the mask contains smooth gradients/anti-aliasing, 
+                        // calculate transparency based on how close the pixel is to magenta.
+                        float magentaDistance = qAbs(mR - 255) + qAbs(mG - 0) + qAbs(mB - 255);
+                        
+                        // If it is very close to magenta, scale down the alpha channel smoothly
+                        if (magentaDistance < 100.0f)
+                        {
+                            float alphaScale = magentaDistance / 100.0f; // 0.0 at pure magenta, 1.0 at far away
+                            int newAlpha = qBound(0, (int)(qAlpha(basePixel) * alphaScale), 255);
+                            baseImg.setPixel(x, y, qRgba(qRed(basePixel), qGreen(basePixel), qBlue(basePixel), newAlpha));
+                        }
+                    }
+                }
+            }
+
+            // 4. Save out the final combined asset
+            if (baseImg.save(texFilename))
+            {
+                qDebug() << "Successfully blended magenta mask to alpha and saved to:" << texFilename;
+            }
+            else
+            {
+                qDebug() << "Failed to save final processed image.";
+            }
+        }
+
+        // 5. Clean up the temporary disk files
+        QFile::remove(tmpFirstPath);
+        QFile::remove(tmpMagentaPath);
+    }
+    else
+    {
+        qDebug() << "Failed to save temporary processing files via RenderDoc Replay.";
+    }
+
+}
+else
+{
+
   if(firstTexture != ResourceId())
   {
     saveConfig.resourceId = firstTexture;
   }
-}
 
 
 // if (hash == "fs.affa68673501670b746b26c5e6f3b001")
@@ -8611,11 +8942,17 @@ else
 {
     qDebug() << "Saved texture to" << texFilename;
 }
-        //SaveTexture
+       }
+              //SaveTexture
 
         //save mtl
+//qDebug() << "CrashDebug0.1";
 QString mtlFilename = filename.left(filename.length() - 4) + lit(".mtl");
+//qDebug() << "CrashDebug0.2";
 QString pngFilename = QFileInfo(filename).baseName() + lit(".png");
+//qDebug() << "CrashDebug0.3";
+
+//qDebug() << "CrashDebug1";
 
 QFile mtlFile(mtlFilename);
 if(mtlFile.open(QIODevice::WriteOnly | QIODevice::Text))
@@ -8630,6 +8967,7 @@ if(mtlFile.open(QIODevice::WriteOnly | QIODevice::Text))
     mtlFile.close();
 }
         //save mtl
+//qDebug() << "CrashDebug2";
   
         bool isNfsPayback = false;
     std::string temp = m_Ctx.GetCaptureFilename().c_str();
@@ -8644,6 +8982,7 @@ if(mtlFile.open(QIODevice::WriteOnly | QIODevice::Text))
 //    s << "# isNfsPayback=" << isNfsPayback << "\n";
     printf("Capture file: %s\n", temp.c_str());
     printf("isNfsPayback: %s\n", isNfsPayback?"true":"false");
+//qDebug() << "CrashDebug3";
 
 
         // otherwise we need to iterate over all the data ourselves
@@ -8672,6 +9011,7 @@ if(mtlFile.open(QIODevice::WriteOnly | QIODevice::Text))
         }
         s << "\n";
 
+//qDebug() << "CrashDebug4";
         // Find first float2 column (has .x and .y but no .z)
 int uvColStart = -1;
 for(int i = 0; i < model->columnCount() - 1; i++)
@@ -8687,6 +9027,17 @@ for(int i = 0; i < model->columnCount() - 1; i++)
         uvColStart = i;
         break;
      }
+     if (colName==lit("TEXCOORD.x")) //fishing planet (unreal engine)
+     {
+        uvColStart = i;
+        break;
+     }
+     if (colName==lit("vs_TEXCOORD0.x")) //carx street flowers?
+     {
+        uvColStart = i;
+        break;
+     }
+//qDebug() << "CrashDebug5";
 
  if(colName.endsWith(lit(".x")) && nextColName.endsWith(lit(".y")))
 {
@@ -8706,7 +9057,10 @@ for(int i = 0; i < model->columnCount() - 1; i++)
     }
 }
 }
+//qDebug() << "CrashDebug6";
+
 s << "# UV col start=" << uvColStart << "\n";
+qDebug() << "UV col start=" << uvColStart;
 
 // Find first float3 column after position (has .x, .y, .z but no .w)
 int normalColStart = -1;

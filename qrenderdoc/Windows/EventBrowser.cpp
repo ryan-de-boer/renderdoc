@@ -5714,6 +5714,8 @@ void brightenTexture(const QString &inputPath, const QString &outputPath) {
     img.save(outputPath, "PNG");
 }
 
+std::string ShowVulkanShaderMD5HashNoBlock(ICaptureContext &ctx);
+
 void EventBrowser::exportObjRange()
 {
   uint32_t startEID = m_SelectStartIndex.data(ROLE_SELECTED_EID).toUInt();
@@ -6075,16 +6077,245 @@ uint32_t totalEvents = endEID - startEID + 1;
 const PipeState &state = m_Ctx.CurPipelineState();
 //std::cout << "Sav2 \n";
 
+std::cout << "S_1 \n";
+
+                  std::string hash = ShowVulkanShaderMD5HashNoBlock(m_Ctx);
+std::cout << "S_2 \n";
+
+int findIndex = 0;    // Default to first texture.
+int magentaTextureIndex = -1;
+if (hash == "fs.ff2bb62d21f161f5ae327f65718e7c78")
+{
+  // SnowRunner rims diffuse.
+  findIndex = 12;
+}
+else if(hash == "fs.affa68673501670b746b26c5e6f3b001")
+{
+  // SnowRunner ute body diffuse.
+  findIndex = 15+1;    // FS15, but include VS0
+}
+else if (hash == "fs.4d6a484458807bad1919a94ddf1afa19")
+{
+  // CarX street tree.
+  findIndex = 10;    // FS10
+  magentaTextureIndex = 11;
+}
+std::cout << "S_3 \n";
+
+
+bool hasGeom = true;
+if(vbs.size() > 0 && vbs[0].resourceId != ResourceId())
+{
+    bytebuf vsinData = r->GetBufferData(vbs[0].resourceId, vbs[0].byteOffset, 0);
+    
+    uint32_t stride = vbs[0].byteStride;
+    uint32_t numVerts = (uint32_t)(vsinData.size() / stride);
+    if (numVerts>0)
+    {
+
+                  MeshFormat posvs = r->GetPostVSData(0, 0, MeshDataStage::VSIn);
+            if(posvs.vertexResourceId == ResourceId())
+            {
+                hasGeom =false;
+            }
+            else
+            {
+            bytebuf vdata = r->GetBufferData(posvs.vertexResourceId, 
+                                              0, 0);
+            if(vdata.empty())
+                hasGeom =false;
+            }
+
+
+    }
+    else
+    {
+      hasGeom = false;
+    }
+}
+else
+{
+  hasGeom = false;
+}
+
+if (hasGeom) //skip textures when no geom
+{
+  int index = 0;
+  ResourceId firstTexture;
+  ResourceId magentaTexture;
+  bool hasMagenta = false;
+
+  const PipeState &pipe2 = m_Ctx.CurPipelineState();
+  for(const UsedDescriptor &u : pipe2.GetAllUsedDescriptors())
+  {
+    const Descriptor &d = u.descriptor;
+
+    if(d.type == DescriptorType::ImageSampler || d.type == DescriptorType::Image)
+    {
+      if(d.resource != ResourceId())
+      {
+        if(findIndex == index)
+        {
+          firstTexture = d.resource;
+        }
+        if (magentaTextureIndex == index)
+        {
+          magentaTexture = d.resource;
+          hasMagenta = true;
+        }
+        index++;
+      }
+    }
+  }
+std::cout << "S_4 \n";
+
+QString texFilename = filename.left(filename.length() - 4) + lit("_") +QString::number(eid) + lit(".png");
+std::cout << "S_5 \n";
+
+
+    if (hasMagenta && magentaTexture != ResourceId())
+{
+  TextureSave saveConfig = {};
+
+  saveConfig.typeCast = CompType::Typeless;
+saveConfig.slice.sliceIndex = 0;
+saveConfig.mip = 0;
+saveConfig.channelExtract = -1;  // all channels
+saveConfig.comp.blackPoint = 0.0f;
+saveConfig.comp.whitePoint = 1.0f;
+saveConfig.alpha = AlphaMapping::Preserve;  // keep alpha
+
+//QString texFilename = filename.left(filename.length() - 4) + lit(".png");
+ResultDetails result = {ResultCode::Succeeded};
+
+    // 1. Define paths for temporary files
+    QString tmpFirstPath = texFilename + lit(".tmp_first.png");
+    QString tmpMagentaPath = texFilename + lit(".tmp_mag.png");
+
+//    m_Ctx.Replay().BlockInvoke(
+//        [&result, &saveConfig, firstTexture, magentaTexture, tmpFirstPath, tmpMagentaPath](IReplayController *r) 
+        { 
+            saveConfig.destType = FileType::PNG;
+            
+            // Save the base diffuse texture
+            saveConfig.resourceId = firstTexture;
+            result = r->SaveTexture(saveConfig, tmpFirstPath); 
+            if (!result.OK()) return;
+
+            // Save the magenta mask texture
+            saveConfig.resourceId = magentaTexture;
+            result = r->SaveTexture(saveConfig, tmpMagentaPath);
+
+                // 3. Force the magenta texture to match the diffuse texture dimensions using Qt
+    QImage firstImg(tmpFirstPath);
+    QImage magentaImg(tmpMagentaPath);
+
+    if (!firstImg.isNull() && !magentaImg.isNull()) {
+        if (magentaImg.size() != firstImg.size()) {
+            // Resize the magenta mask using high-quality bilinear or smooth filtering
+            QImage resizedMagenta = magentaImg.scaled(
+                firstImg.size(), 
+                Qt::IgnoreAspectRatio, 
+                Qt::SmoothTransformation
+            );
+            // Overwrite the temporary file with the correctly sized version
+            resizedMagenta.save(tmpMagentaPath, "PNG");
+        }
+    }
+
+
+        }
+      //);
+
+            if (result.OK())
+    {
+        // 2. Load the textures into Qt's image processing objects
+        QImage baseImg(tmpFirstPath);
+        QImage magImg(tmpMagentaPath);
+
+        if (!baseImg.isNull() && !magImg.isNull())
+        {
+            // Convert to a format that supports a full 8-bit alpha channel
+            baseImg = baseImg.convertToFormat(QImage::Format_ARGB32);
+            magImg = magImg.convertToFormat(QImage::Format_ARGB32);
+
+            int width = qMin(baseImg.width(), magImg.width());
+            int height = qMin(baseImg.height(), magImg.height());
+
+            // 3. Process pixels (Color to Alpha logic)
+            for (int y = 0; y < height; ++y)
+            {
+                for (int x = 0; x < width; ++x)
+                {
+                    QRgb basePixel = baseImg.pixel(x, y);
+                    QRgb magPixel = magImg.pixel(x, y);
+
+                    int mR = qRed(magPixel);
+                    int mG = qGreen(magPixel);
+                    int mB = qBlue(magPixel);
+
+                    // GIMP Color-to-Alpha style matching for Magenta (255, 0, 255)
+                    // If it is a perfect match or used as a chroma-key mask:
+                    if (mR == 255 && mG == 0 && mB == 255)
+                    {
+                        // Set alpha to fully transparent (0)
+                        baseImg.setPixel(x, y, qRgba(qRed(basePixel), qGreen(basePixel), qBlue(basePixel), 0));
+                    }
+                    else 
+                    {
+                        // Optional fallback: If the mask contains smooth gradients/anti-aliasing, 
+                        // calculate transparency based on how close the pixel is to magenta.
+                        float magentaDistance = qAbs(mR - 255) + qAbs(mG - 0) + qAbs(mB - 255);
+                        
+                        // If it is very close to magenta, scale down the alpha channel smoothly
+                        if (magentaDistance < 100.0f)
+                        {
+                            float alphaScale = magentaDistance / 100.0f; // 0.0 at pure magenta, 1.0 at far away
+                            int newAlpha = qBound(0, (int)(qAlpha(basePixel) * alphaScale), 255);
+                            baseImg.setPixel(x, y, qRgba(qRed(basePixel), qGreen(basePixel), qBlue(basePixel), newAlpha));
+                        }
+                    }
+                }
+            }
+
+            // 4. Save out the final combined asset
+            if (baseImg.save(texFilename))
+            {
+                qDebug() << "Successfully blended magenta mask to alpha and saved to:" << texFilename;
+            }
+            else
+            {
+                qDebug() << "Failed to save final processed image.";
+            }
+        }
+
+        // 5. Clean up the temporary disk files
+        QFile::remove(tmpFirstPath);
+        QFile::remove(tmpMagentaPath);
+
+        std::cout << "S_6 \n";
+
+    }
+    else
+    {
+        qDebug() << "Failed to save temporary processing files via RenderDoc Replay.";
+    }
+
+}
+else
+{
+std::cout << "S_7 \n";
+
 // For Vulkan/DX12 (Bindless or Descriptor Sets)
 const rdcarray<UsedDescriptor> &resources = state.GetReadOnlyResources(ShaderStage::Pixel);
-ResourceId texId;
+ResourceId texId = firstTexture;
 //std::cout << "Sav3 \n";
-for(const UsedDescriptor &used : resources)
-{
-    texId = used.descriptor.resource;
-    break;
-    // This is your Texture ID!
-}
+// for(const UsedDescriptor &used : resources)
+// {
+//     texId = used.descriptor.resource;
+//     break;
+//     // This is your Texture ID!
+// }
 
 //std::cout << "Sav4 \n";
 TextureSave saveConfig = {};
@@ -6097,7 +6328,7 @@ saveConfig.comp.blackPoint = 0.0f;
 saveConfig.comp.whitePoint = 1.0f;
 saveConfig.alpha = AlphaMapping::Preserve;  // keep alpha
 
-QString texFilename = filename.left(filename.length() - 4) + lit("_") +QString::number(eid) + lit(".png");
+//QString texFilename = filename.left(filename.length() - 4) + lit("_") +QString::number(eid) + lit(".png");
 //std::cout << "Sav5 \n";
 
 saveConfig.destType = FileType::PNG;
@@ -6119,8 +6350,10 @@ else
 {
     std::cout << "Saved texture to " << texFilename.toStdString() << std::endl;
 }
+}
+std::cout << "S_8 \n";
 
-
+//std::cout << "CrashDebug0.1"<< std::endl;
                   std::string temp = m_Ctx.GetCaptureFilename().c_str();
     // convert string to lowercase
     std::transform(temp.begin(), temp.end(), temp.begin(),
@@ -6129,16 +6362,18 @@ else
     {
 brightenTexture(texFilename, texFilename);
     }
-
-
+//std::cout << "CrashDebug0.2"<< std::endl;
         //SaveTexture
 
+std::cout << "S_9 \n";
+
+// prevent materials being written
 
             s << "o " << QFileInfo(texFilename).baseName() << "\n";
     s << "mtllib " << QFileInfo(texFilename).baseName() << ".mtl\n";
     s << "usemtl material" << eid << "\n\n";
 
-
+//std::cout << "CrashDebug0.3"<< std::endl;
     // Save MTL
     QString dirPath = QFileInfo(texFilename).absolutePath();
     QString mtlFilename = dirPath + lit("/") + QFileInfo(texFilename).baseName() + lit(".mtl");
@@ -6154,8 +6389,9 @@ brightenTexture(texFilename, texFilename);
         m << "map_d " << QFileInfo(texFilename).baseName() << ".png\n";
         mtlFile.close();
     }
+  }
 
-
+//std::cout<< "CrashDebug0.4"<< std::endl;
 
 // // Get WVP matrix from vertex shader constant buffer
 // const PipeState &pipeState = m_Ctx.CurPipelineState();
@@ -6227,6 +6463,7 @@ float u_uv = -1;
 
 float ox=-1, oy=-1, oz=-1, ow=-1;
 float onx=-1, ony=-1, onz=-1, onw=-1;
+//std::cout<< "CrashDebug0.5"<< std::endl;
 
 auto mat4mul = [](const float m[16], float x, float y, float z, float w,
                   float &ox, float &oy, float &oz, float &ow)
@@ -6258,7 +6495,7 @@ if(m_Ctx.HasMeshPreview())
         // ... your column detection code here using model ...
     }
 }
-
+//std::cout<< "CrashDebug0.6"<< std::endl;
 
 int posSize = 12;
 int normalSize = 12;
@@ -6405,7 +6642,7 @@ if(vbs.size() > 0 && vbs[0].resourceId != ResourceId())
 }
 
 //unstransformed
-
+//std::cout<< "CrashDebug0.7"<< std::endl;
 
             // Get VSOut post-transform data
             //MeshFormat posvs = r->GetPostVSData(0, 0, MeshDataStage::VSOut);
@@ -6613,15 +6850,26 @@ mat4mul(guessProjInv, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
 if(ow != 0.0f) { ox/=ow; oy/=ow; oz/=ow; }
 */
 
-
+//std::cout<< "CrashDebug0.8"<< std::endl;
 
 if (hasNormal)
 {
+  if (i < untrans_normals_x.size())
 nx = untrans_normals_x[i];
+  else
+  nx = 0.0;
+  if (i < untrans_normals_y.size())
 ny = untrans_normals_y[i];
+  else
+  ny = 0.0;
+  if (i < untrans_normals_z.size())
 nz = untrans_normals_z[i];
+  else
+  nz = 0.0;
+
 }
 
+//std::cout << "CrashDebug0.9"<< std::endl;
 
  
     if (customMatrixSet2) {
@@ -6653,11 +6901,16 @@ mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
 //               s << "v " << pos[0]/pos[3] << " " << pos[1]/pos[3] << " " << pos[2]/pos[3] << "\n";
 
 
-               if (hasNormal)
+               if (hasNormal && i < untrans_normals_x.size()&& i < untrans_normals_y.size()&& i < untrans_normals_z.size())
                {
                   s << "#uvn " << untrans_normals_x[i] << " " << untrans_normals_y[i] << " " << untrans_normals_z[i] << "\n"; //blender fix
                   s << "vn " << untrans_normals_x[i] << " " << untrans_normals_y[i] << " " << untrans_normals_z[i] << "\n"; //blender fix
 //                  s << "vn " << onx << " " << ony << " " << onz << "\n"; //blender fix
+               }
+               else if (hasNormal)
+               {
+                  s << "#uvn " << 0.0<< " " << 0.0 << " " << 0.0 << "\n"; //blender fix
+                  s << "vn " << 0.0 << " " << 0.0 << " " << 0.0 << "\n"; //blender fix
                }
 
                if (hasUV)
@@ -6851,6 +7104,8 @@ mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
     });
 
     file.close();
+
+//    std::cout << "CrashDebug0.10"<< std::endl;
 
     std::cout << std::endl << "Export Complete." << std::endl;
 }
