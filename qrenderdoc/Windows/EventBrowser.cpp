@@ -5716,6 +5716,77 @@ void brightenTexture(const QString &inputPath, const QString &outputPath) {
 
 std::string ShowVulkanShaderMD5HashNoBlock(ICaptureContext &ctx);
 
+
+// Change parameter from "const uint16_t *halfPtr" to "uint16_t h"
+float ConvertHalfToFloat(uint16_t h)
+{
+    // Remove the line: uint16_t h = *halfPtr;
+    
+    // Extract sign, exponent, and mantissa fields
+    uint32_t sign     = (h & 0x8000) << 16;
+    uint32_t exponent = (h & 0x7C00) >> 10;
+    uint32_t mantissa = (h & 0x03FF);
+
+    uint32_t f = 0;
+    if (exponent == 0)
+    {
+        if (mantissa != 0)
+        {
+            exponent = 127 - 15 + 1;
+            while ((mantissa & 0x0400) == 0)
+            {
+                mantissa <<= 1;
+                exponent--;
+            }
+            mantissa &= 0x03FF;
+            f = sign | (exponent << 23) | (mantissa << 13);
+        }
+        else
+        {
+            f = sign;
+        }
+    }
+    else if (exponent == 0x1F)
+    {
+        f = sign | (0xFF << 23) | (mantissa << 13);
+    }
+    else
+    {
+        uint32_t newExponent = exponent + (127 - 15);
+        f = sign | (newExponent << 23) | (mantissa << 13);
+    }
+
+    float result;
+    std::memcpy(&result, &f, sizeof(float));
+    return result;
+}
+
+// Print all floats for first few vertices so you can visually identify normals
+void debugPrintVertexFloats(bytebuf& vdata, int iStart, uint32_t stride, uint32_t numVerts, QTextStream& s)
+{
+    s << QLatin1String("=== VERTEX FLOATS (First ") << std::min(3u, numVerts) << QLatin1String(" vertices) ===\n");
+    s << QLatin1String("Stride: ") << stride << QLatin1String(" bytes\n\n");
+    
+    uint32_t checkVerts = std::min(3u, numVerts);
+    int numFloats = std::min(32, (int)stride / 4);
+    
+    for(uint32_t i = iStart; i < iStart+checkVerts; i++)
+    {
+        s << QLatin1String("--- Vertex ") << i << QLatin1String(" ---\n");
+        const byte* vertexPtr = vdata.data() + (i * stride);
+        
+        for(int j = 0; j < numFloats; j += 4)
+        {
+            const float* f = (const float*)(vertexPtr + j * 4);
+            s << QLatin1String("  offset ") << (j * 4) << QLatin1String(": ")
+              << f[0] << QLatin1String(", ") << f[1] << QLatin1String(", ") 
+              << f[2] << QLatin1String(", ") << f[3] << QLatin1String("\n");
+        }
+        s << QLatin1String("\n");
+    }
+}
+
+
 void EventBrowser::exportObjRange()
 {
   uint32_t startEID = m_SelectStartIndex.data(ROLE_SELECTED_EID).toUInt();
@@ -6100,7 +6171,24 @@ else if (hash == "fs.4d6a484458807bad1919a94ddf1afa19")
   findIndex = 10;    // FS10
   magentaTextureIndex = 11;
 }
-std::cout << "S_3 \n";
+else if (hash == "fs.1cd8cf6a3fd37a171ae827f344ffc4f7" 
+|| hash == "fs.ad2f84f5631eaa93f5879ffa3f2b232b"
+|| hash == "fs.25da68816089855089d2e7611d5cd361"
+|| hash == "fs.7e19ee4d9cf85bdafad9974df3e0fec1"
+|| hash == "fs.50126acaebadcba4ca55e1ae555f39b7"
+|| hash == "fs.ee49889bc7968e95f99195b2937aa7e8")
+{
+  // Snowrunner tree.
+  findIndex = 2;    // FS2
+  std::cout << "snow runner tree \n";
+}
+else if (hash == "fs.f278509a91a99f485b011d45258de3a8")
+{
+  //Zoria tree
+  findIndex = 1; // FS1
+  std::cout << "zoria tree \n";
+}
+std::cout << "S_3 " << hash << "\n";
 
 
 bool hasGeom = true;
@@ -6370,6 +6458,7 @@ std::cout << "S_9 \n";
 // prevent materials being written
 
             s << "o " << QFileInfo(texFilename).baseName() << "\n";
+            s << "# Hash: " << hash.c_str() << "\n";
     s << "mtllib " << QFileInfo(texFilename).baseName() << ".mtl\n";
     s << "usemtl material" << eid << "\n\n";
 
@@ -6381,6 +6470,7 @@ std::cout << "S_9 \n";
     if(mtlFile.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         QTextStream m(&mtlFile);
+        m << "# Hash: " << hash.c_str() << "\n";
         m << "newmtl material" << eid <<"\n";
         m << "Ka 1.0 1.0 1.0\n";
         m << "Kd 1.0 1.0 1.0\n";
@@ -6894,14 +6984,38 @@ mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
 
 //mat4mul(ident, u_vx, u_vy, u_vz, 1.0f, ox, oy, oz, ow);
 //mat4mul(ident, u_nx, u_ny, u_nz, 1.0f, onx, ony, onz, onw);
-
+bool isBS3 = true;
+if (isBS3)
+{
+               s << "v " << -ox*0.5f << " " << oy*0.5f << " " << oz << "\n"; //blender fix
+}
+else
+{
                s << "v " << ox*0.5f << " " << oy*0.5f << " " << oz << "\n"; //blender fix
+}
+
 
 //test org v / w
 //               s << "v " << pos[0]/pos[3] << " " << pos[1]/pos[3] << " " << pos[2]/pos[3] << "\n";
 
 
-               if (hasNormal && i < untrans_normals_x.size()&& i < untrans_normals_y.size()&& i < untrans_normals_z.size())
+              if (isBS3 && hasNormal) {
+
+                int vertexIndex1 = i;
+ const byte *vertexPtr1 = vdata.data() + posvs.vertexByteOffset + (vertexIndex1 * posvs.vertexByteStride);
+
+    // UV is at offset 32-39 (2 floats: U at 32, V at 36)
+    const float *withOffset = (const float *)(vertexPtr1 + 112);//offset 112 is transformed normal!
+    //probably transformed with either W, or WV (never likely P)    
+    //yey they work well
+    
+    float nx = withOffset[0];
+    float ny = withOffset[1];
+    float nz = withOffset[2];
+
+                  s << "vn " << nx << " " << ny << " " << nz << "\n";
+              }
+               else if (hasNormal && i < untrans_normals_x.size()&& i < untrans_normals_y.size()&& i < untrans_normals_z.size())
                {
                   s << "#uvn " << untrans_normals_x[i] << " " << untrans_normals_y[i] << " " << untrans_normals_z[i] << "\n"; //blender fix
                   s << "vn " << untrans_normals_x[i] << " " << untrans_normals_y[i] << " " << untrans_normals_z[i] << "\n"; //blender fix
@@ -6923,7 +7037,7 @@ mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
 
 
 //                 // UV at offset 16 (_output0, float4, first 2 floats are UV)
-                if(stride >= 24)
+                if(!isBS3 && stride >= 24)
                 {
 //                    const float *uv = (const float *)(ptr + 16);
                     const float *uv = (const float *)(vertexPtr + 16);
@@ -6931,6 +7045,546 @@ mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
                     s << "# vt raw " << uv[0] << " " << uv[1] << "\n";
                     s << "vt " << uv[0] << " " << (1.0f - uv[1]) << "\n";
                 }
+                else if (isBS3)
+                {
+
+                          // Calculate UV offset - try to find Texcoord0 attribute
+        uint32_t uvOffset = 16; // Default
+        const PipeState &pipeState = m_Ctx.CurPipelineState();
+        auto vertexInputs = pipeState.GetVertexInputs();
+        for(const auto &attr : vertexInputs)
+        {
+            QString name = QString::fromLatin1(attr.name.c_str());
+            if(name.contains(QLatin1String("Texcoord0"), Qt::CaseInsensitive) ||
+               name.contains(QLatin1String("TEXCOORD0"), Qt::CaseInsensitive))
+            {
+                uvOffset = attr.byteOffset;
+                break;
+            }
+        }
+        
+//        const byte *vertexPtr = vdata.data() + posvs.vertexByteOffset + (i * posvs.vertexByteStride);
+uvOffset = 31;
+
+         // Get UV pointer using the SAME vertexIndex (not the loop variable i)
+ //        const byte *uvPtr = vdata.data() + (vertexIndex * posvs.vertexByteStride) + uvOffset;
+//         const byte *uvPtr = vdata.data() + posvs.vertexByteOffset  + (i * posvs.vertexByteStride) + uvOffset;
+//         const float *uv = (const float *)uvPtr;
+        
+int vertexIndex = i;
+ const byte *vertexPtr = vdata.data() + posvs.vertexByteOffset + (vertexIndex * posvs.vertexByteStride);
+
+    // UV is at offset 32-39 (2 floats: U at 32, V at 36)
+    const float *uvU = (const float *)(vertexPtr + 32);
+    const float *uvV = (const float *)(vertexPtr + 36);
+    
+    float u = uvU[0];
+    float v = uvV[0];
+
+         s << "# vt raw " << u << " " << v << "\n";
+         s << "vt " << u << " " << (1.0f - v) << "\n";
+
+             //n
+    //debugPrintVertexFloats(bytebuf& vdata, uint32_t stride, uint32_t numVerts, QTextStream& s)
+    //debugPrintVertexFloats(vdata, i, posvs.vertexByteStride, 1, s); //offset 112 is transformed normal!
+    //n
+
+
+// uint totalVertices = 145;
+// // Debug: Print first few vertices raw data to find where UVs actually are
+// s << "# === DEBUG: First 10 vertices raw data ===\n";
+// for(uint32_t debugIdx = 0; debugIdx < std::min(10u, totalVertices); debugIdx++)
+// {
+//     const byte *debugPtr = vdata.data() + posvs.vertexByteOffset + (debugIdx * posvs.vertexByteStride);
+    
+//     s << "# Vertex " << debugIdx << " (offset " << (debugIdx * posvs.vertexByteStride) << "):\n";
+    
+//     // Print first 64 bytes of each vertex in hex
+//     s << "#   ";
+//     for(int j = 0; j < std::min(64, (int)posvs.vertexByteStride); j++)
+//     {
+//         s << QString::number((int)debugPtr[j], 16).rightJustified(2, QLatin1Char('0')) << " ";
+//         if((j+1) % 16 == 0) s << "\n#   ";
+//     }
+//     s << "\n";
+    
+//     // Try to interpret as floats at different offsets
+//     for(int offset = 0; offset < std::min(32, (int)posvs.vertexByteStride - 8); offset += 4)
+//     {
+//         const float *testFloat = (const float *)(debugPtr + offset);
+//         // Only print if it looks like a valid UV (between 0 and 1)
+//         if(testFloat[0] >= 0.0f && testFloat[0] <= 1.0f && 
+//            testFloat[1] >= 0.0f && testFloat[1] <= 1.0f)
+//         {
+//             s << "#   offset " << offset << " looks like UV: (" << testFloat[0] << ", " << testFloat[1] << ")\n";
+//         }
+//     }
+//     s << "\n";
+// }
+
+// // Now try to find UVs more intelligently
+// s << "# === Searching for valid UVs ===\n";
+//  uvOffset = 16; // Default
+// bool foundValidUV = false;
+
+// // Try common UV offsets
+// int offsetsToTry[] = {0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48};
+// for(uint tryOffset : offsetsToTry)
+// {
+//     if(tryOffset + 8 > posvs.vertexByteStride) continue;
+    
+//     int validCount = 0;
+//     for(uint32_t i = 0; i < std::min(10u, totalVertices); i++)
+//     {
+//         const byte *testPtr = vdata.data() + posvs.vertexByteOffset + (i * posvs.vertexByteStride) + tryOffset;
+//         const float *testUV = (const float *)testPtr;
+        
+//         // Check if it's a valid UV (between 0 and 1)
+//         if(testUV[0] >= 0.0f && testUV[0] <= 1.0f && 
+//            testUV[1] >= 0.0f && testUV[1] <= 1.0f)
+//         {
+//             validCount++;
+//         }
+//     }
+    
+//     if(validCount >= 5) // At least 5 out of 10 vertices have valid UVs
+//     {
+//         uvOffset = tryOffset;
+//         foundValidUV = true;
+//         s << "# Found valid UVs at offset " << uvOffset << " (" << validCount << "/10 vertices)\n";
+//         break;
+//     }
+// }
+
+// // If we still couldn't find valid UVs, try checking for the specific expected value
+// if(!foundValidUV)
+// {
+//     s << "# No valid UVs found in common offsets, searching for expected value (0.7064, 0.2782)...\n";
+//     for(uint32_t i = 0; i < std::min(200u, totalVertices); i++)
+//     {
+//         const byte *testPtr = vdata.data() + posvs.vertexByteOffset + (i * posvs.vertexByteStride);
+//         for(int offset = 0; offset < std::min(64, (int)posvs.vertexByteStride - 8); offset += 4)
+//         {
+//             const float *testUV = (const float *)(testPtr + offset);
+//             if(fabs(testUV[0] - 0.7064f) < 0.01f && fabs(testUV[1] - 0.2782f) < 0.01f)
+//             {
+//                 uvOffset = offset;
+//                 foundValidUV = true;
+//                 s << "# Found expected UV at vertex " << i << ", offset " << offset << "\n";
+//                 break;
+//             }
+//         }
+//         if(foundValidUV) break;
+//     }
+// }
+
+// // Now use the found offset
+// s << "# Using UV offset: " << uvOffset << "\n";
+
+// for(uint32_t vertexIndex = 0; vertexIndex < totalVertices; vertexIndex++)
+// {
+//     // ... your existing position/normal code ...
+    
+//     // UV extraction with the found offset
+//     const byte *uvPtr = vdata.data() + posvs.vertexByteOffset + (vertexIndex * posvs.vertexByteStride) + uvOffset;
+//     const float *uv = (const float *)uvPtr;
+    
+//     // Check if it's a valid UV before outputting
+//     if(uv[0] >= 0.0f && uv[0] <= 1.0f && uv[1] >= 0.0f && uv[1] <= 1.0f)
+//     {
+//         s << "# vt raw " << uv[0] << " " << uv[1] << ", uvOffset:" << uvOffset << "\n";
+//         s << "vt " << uv[0] << " " << (1.0f - uv[1]) << "\n";
+//     }
+//     else
+//     {
+//         // Output fallback UV (0,0) if invalid
+//         s << "# vt raw " << uv[0] << " " << uv[1] << " (INVALID, using fallback), uvOffset:" << uvOffset << "\n";
+//         s << "vt 0 0\n";
+//     }
+// }
+
+
+
+
+// // 1. Grab the pipeline state cleanly on the UI Thread
+// const PipeState &pipeState = m_Ctx.CurPipelineState();
+
+// int uvBufferIndex = -1;
+// uint32_t uvByteOffset = 0;
+// ResourceFormat uvFormat;
+// char* rr = NULL;
+
+// auto vertexBuffers = pipeState.GetVBuffers();
+// if((size_t)uvBufferIndex < vertexBuffers.size())
+// {
+//     const auto &vbuf = vertexBuffers[uvBufferIndex];
+    
+//     // Save buffer limits into thread-safe local copies before lambda capture
+//     uint32_t numVertsToExport = numVerts; 
+//     uint32_t stride = vbuf.byteStride; // <--- FIXED: changed from vbuf.stride to vbuf.byteStride
+
+//     // Dispatch your asynchronous extraction safely to the Replay thread
+//     m_Ctx.Replay().AsyncInvoke([this, vbuf, uvByteOffset, uvFormat, numVertsToExport, stride, rr](IReplayController *r) {
+        
+//         bytebuf data = r->GetBufferData(vbuf.resourceId, vbuf.byteOffset, 0);
+//         std::stringstream asyncStream;
+
+//         for(uint32_t i = 0; i < numVertsToExport; ++i)
+//         {
+//             // The step sizing calculations now use the correct byte distance parameter
+//             uint32_t currentVertexOffset = (i * stride) + uvByteOffset;
+            
+//             if(currentVertexOffset + 8 <= data.size()) 
+//             {
+//                 const byte *uvPtr = data.data() + currentVertexOffset;
+//                 float u = 0.0f, v = 0.0f;
+                
+// // Check if the component data type is a floating-point number
+// if(uvFormat.compType == CompType::Float && uvFormat.compByteWidth == 4)
+// {
+//     const float *fuv = (const float *)uvPtr;
+//     u = fuv[0];
+//     v = fuv[1];
+// }
+// else if(uvFormat.compType == CompType::Float && uvFormat.compByteWidth == 2)
+// {
+//     const uint16_t *huv = (const uint16_t *)uvPtr;
+//     u = ConvertHalfToFloat(huv[0]); 
+//     v = ConvertHalfToFloat(huv[1]);
+// }
+                
+//                 asyncStream << "vt " << u << " " << (1.0f - v) << "\n";
+// //                s << "vt " << u << " " << (1.0f - v) << "\n";
+//             }
+//         }
+
+//         std::string results = asyncStream.str();
+
+//         GUIInvoke::call(this, [this, results, rr]() {
+//             // Append your data strings safely back into the UI layout engine here
+// //            s << results.c_str();
+// rr = results.c_str();
+//         });
+//     });
+// }
+
+// if (rr!=NULL)
+// s << rr;
+
+
+
+//     std::cout << std::endl << "A" << std::endl;
+
+// const PipeState &pipeState = m_Ctx.CurPipelineState();  
+// int uvBufferIndex = -1; // Fixed syntax error from "-1;" to -1
+// uint32_t uvByteOffset = 0; 
+// ResourceFormat uvFormat;  
+// auto vertexBuffers = pipeState.GetVBuffers(); // Use standard accessor or GetVBuffers() depending on your RD version
+//     std::cout << std::endl << "B: uvBufferIndex:" << uvBufferIndex << ",vertexBuffers.size():" << vertexBuffers.size() << std::endl;
+
+// // Loop through input attributes safely using native member variables
+// auto vertexInputs = pipeState.GetVertexInputs();
+// for(const auto &attr : vertexInputs)
+// {
+//     // RenderDoc aggregates HLSL semantics and GLSL layouts into the 'name' field
+//     std::string name = attr.name.c_str(); 
+    
+//     // Explicitly scan variations of Texcoord0 or TEXCOORD0
+//     if(name.find("Texcoord0") != std::string::npos || 
+//        name.find("TEXCOORD0") != std::string::npos ||
+//        name.find("texcoord0") != std::string::npos)
+//     {
+//         uvBufferIndex = (int)attr.vertexBuffer; // Fixed member name from vertexBufferSlot
+//         uvByteOffset = attr.byteOffset;
+//         uvFormat = attr.format;
+//         break;
+//     }
+// }
+
+
+// //got130
+
+// // 1. Get the input assembly data from the pipeline state
+// const PipeState &pipeState = m_Ctx.CurPipelineState();
+// auto vertexInputs = pipeState.GetVertexInputs();
+
+// // Build debug info as QString directly
+// QString debugOutput;
+// QTextStream debugStream(&debugOutput);
+
+// debugStream << "=== Vertex Input Attributes ===\n";
+// for(size_t i = 0; i < vertexInputs.size(); ++i)
+// {
+//     const auto &attr = vertexInputs[i];
+//     debugStream << "Attr " << i << ": name=" << attr.name.c_str() 
+//                 << ", byteOffset=" << attr.byteOffset 
+//                 << ", compType=" << (int)attr.format.compType
+//                 << ", compByteWidth=" << attr.format.compByteWidth << "\n";
+// }
+
+// uint32_t uvByteOffset = 0;
+// ResourceFormat uvFormat;
+// bool attributeFound = false;
+
+// // 2. Scan for Texcoord0
+// for(const auto &attr : vertexInputs)
+// {
+//     QString name = QString::fromLatin1(attr.name.c_str());
+//     debugStream << "Checking attribute: '" << name << "'\n";
+    
+//     if(name.contains(QLatin1String("Texcoord0"), Qt::CaseInsensitive) ||
+//        name.contains(QLatin1String("TEXCOORD0"), Qt::CaseInsensitive))
+//     {
+//         uvByteOffset = attr.byteOffset;
+//         uvFormat = attr.format;
+//         attributeFound = true;
+//         debugStream << "Found UV attribute at offset: " << uvByteOffset << "\n";
+//         break;
+//     }
+// }
+
+// if(!attributeFound)
+// {
+//     uvFormat.compType = CompType::Float;
+//     uvFormat.compByteWidth = 4;
+//     uvByteOffset = 0;
+//     debugStream << "Using fallback offset: 0\n";
+// }
+
+// // 3. Get the vertex buffer data
+// auto vertexBuffers = pipeState.GetVBuffers();
+// if(vertexBuffers.empty())
+// {
+//     s << QLatin1String("No vertex buffers found");
+//     return;
+// }
+
+// debugStream << "=== Vertex Buffers ===\n";
+// for(size_t i = 0; i < vertexBuffers.size(); ++i)
+// {
+//     const auto &vb = vertexBuffers[i];
+//     debugStream << "Buffer " << i << ": resourceId=" 
+//                 << (vb.resourceId == ResourceId() ? QLatin1String("null") : QLatin1String("valid"))
+//                 << ", byteOffset=" << vb.byteOffset 
+//                 << ", byteStride=" << vb.byteStride << "\n";
+// }
+
+// // Find the correct vertex buffer
+// ResourceId bufferId;
+// uint64_t bufferOffset = 0;
+// uint32_t stride = 0;
+
+// for(size_t i = 0; i < vertexBuffers.size(); ++i)
+// {
+//     const auto &vb = vertexBuffers[i];
+//     if(vb.resourceId != ResourceId() && vb.byteStride > 0)
+//     {
+//         // Use the first valid buffer
+//         bufferId = vb.resourceId;
+//         bufferOffset = vb.byteOffset;
+//         stride = vb.byteStride;
+//         debugStream << "Selected buffer " << i << " with stride: " << stride << "\n";
+//         break;
+//     }
+// }
+
+// if(bufferId == ResourceId())
+// {
+//     s << QLatin1String("No valid vertex buffer found");
+//     return;
+// }
+
+// // 4. Fetch the buffer data
+// bytebuf data = r->GetBufferData(bufferId, bufferOffset, 0);
+// if(data.empty())
+// {
+//     s << QLatin1String("Failed to get buffer data");
+//     return;
+// }
+
+// debugStream << "Buffer data size: " << data.size() << " bytes\n";
+
+// // 5. Get the vertex count and base vertex
+// const ActionDescription *action = m_Ctx.GetAction(m_Ctx.CurEvent());
+// uint32_t vertexCount = 0;
+// int32_t baseVertex = 0;
+
+// if(action)
+// {
+//     vertexCount = action->numIndices;
+//     baseVertex = (action->flags & ActionFlags::Indexed) ? action->baseVertex : action->vertexOffset;
+//     debugStream << "Action: numIndices=" << vertexCount << ", baseVertex=" << baseVertex << "\n";
+// }
+// else
+// {
+//     s << QLatin1String("No valid action found");
+//     return;
+// }
+
+// // 6. Debug: Print specific vertices including 130
+// debugStream << "=== Checking specific vertices ===\n";
+// debugStream << "BaseVertex: " << baseVertex << "\n";
+
+// // Check the vertices that MeshViewer might be showing
+// int verticesToCheck[] = {0, 1, 2, 3, 4, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134};
+// int numToCheck = sizeof(verticesToCheck) / sizeof(verticesToCheck[0]);
+
+// for(int idx = 0; idx < numToCheck; ++idx)
+// {
+//     int vertexIndex = verticesToCheck[idx];
+//     int64_t targetIndex = (int64_t)vertexIndex;
+    
+//     // Also try with baseVertex offset
+//     int64_t targetIndexWithBase = (int64_t)vertexIndex + (int64_t)baseVertex;
+    
+//     for(int tryBase = 0; tryBase < 2; ++tryBase)
+//     {
+//         int64_t checkIndex = (tryBase == 0) ? targetIndex : targetIndexWithBase;
+//         if(checkIndex < 0) continue;
+        
+//         uint64_t currentVertexOffset = ((uint64_t)checkIndex * (uint64_t)stride) + (uint64_t)uvByteOffset;
+//         if(currentVertexOffset + 8 <= data.size())
+//         {
+//             const byte *uvPtr = data.data() + currentVertexOffset;
+//             const float *fuv = (const float *)uvPtr;
+            
+//             debugStream << "Vertex " << vertexIndex;
+//             if(tryBase == 1) debugStream << " (with baseVertex)";
+//             debugStream << " -> index " << checkIndex << ": UV = (" << fuv[0] << ", " << fuv[1] << ")\n";
+            
+//             // Also print all 4 floats if available
+//             if(currentVertexOffset + 16 <= data.size())
+//             {
+//                 const float *fuv4 = (const float *)uvPtr;
+//                 debugStream << "  All floats: (" << fuv4[0] << ", " << fuv4[1] << ", " << fuv4[2] << ", " << fuv4[3] << ")\n";
+//             }
+            
+//             // Check if this matches expected UV
+//             if(fabs(fuv[0] - 0.7064f) < 0.01f && fabs(fuv[1] - 0.2782f) < 0.01f)
+//             {
+//                 debugStream << "  *** FOUND EXPECTED UV (0.7064, 0.2782) at vertex " << vertexIndex << " (index " << checkIndex << ") ***\n";
+//             }
+//         }
+//     }
+// }
+
+// // 7. Debug: Search the entire buffer for the expected UV
+// debugStream << "=== Searching all vertices for UV (0.7064, 0.2782) ===\n";
+// bool foundExpected = false;
+// uint32_t maxVertices = vertexCount + baseVertex + 10; // Search a bit beyond
+// for(uint32_t i = 0; i < maxVertices && !foundExpected; ++i)
+// {
+//     uint64_t currentVertexOffset = ((uint64_t)i * (uint64_t)stride) + (uint64_t)uvByteOffset;
+//     if(currentVertexOffset + 8 <= data.size())
+//     {
+//         const byte *uvPtr = data.data() + currentVertexOffset;
+//         const float *fuv = (const float *)uvPtr;
+        
+//         // Check if this vertex has UVs close to expected
+//         if(fabs(fuv[0] - 0.7064f) < 0.005f && fabs(fuv[1] - 0.2782f) < 0.005f)
+//         {
+//             debugStream << "FOUND at absolute vertex index " << i << ": UV (" << fuv[0] << ", " << fuv[1] << ")\n";
+//             debugStream << "  Raw bytes: ";
+//             for(int j = 0; j < 8; ++j)
+//             {
+//                 debugStream << QString::number((int)uvPtr[j], 16).rightJustified(2, QLatin1Char('0')) << " ";
+//             }
+//             debugStream << "\n";
+//             foundExpected = true;
+//         }
+//     }
+// }
+
+// if(!foundExpected)
+// {
+//     debugStream << "Expected UV (0.7064, 0.2782) not found in the vertex buffer\n";
+// }
+
+// // 8. Also check for other possible UV values (maybe the expected is different)
+// debugStream << "=== Checking for common UV patterns ===\n";
+// for(uint32_t i = 0; i < std::min(200u, (uint32_t)(data.size() / stride)); ++i)
+// {
+//     uint64_t currentVertexOffset = ((uint64_t)i * (uint64_t)stride) + (uint64_t)uvByteOffset;
+//     if(currentVertexOffset + 8 <= data.size())
+//     {
+//         const byte *uvPtr = data.data() + currentVertexOffset;
+//         const float *fuv = (const float *)uvPtr;
+        
+//         // Check for UVs in valid range [0,1]
+//         if(fuv[0] >= 0.0f && fuv[0] <= 1.0f && fuv[1] >= 0.0f && fuv[1] <= 1.0f)
+//         {
+//             debugStream << "Vertex " << i << ": (" << fuv[0] << ", " << fuv[1] << ")\n";
+//         }
+//     }
+// }
+
+// // 9. Extract all UVs WITH baseVertex offset
+// QString uvOutput;
+// QTextStream uvStream(&uvOutput);
+
+// // Try both with and without baseVertex to see which gives correct results
+// for(uint32_t pass = 0; pass < 2; ++pass)
+// {
+//     bool useBaseVertex = (pass == 1);
+//     uvStream << (useBaseVertex ? "=== With baseVertex ===\n" : "=== Without baseVertex ===\n");
+    
+//     uint32_t startIdx = useBaseVertex ? baseVertex : 0;
+//     uint32_t endIdx = useBaseVertex ? (vertexCount + baseVertex) : vertexCount;
+    
+//     for(uint32_t i = startIdx; i < endIdx; ++i)         
+//     {             
+//         uint64_t currentVertexOffset = ((uint64_t)i * (uint64_t)stride) + (uint64_t)uvByteOffset;                          
+        
+//         if(currentVertexOffset + 8 <= data.size())              
+//         {                 
+//             const byte *uvPtr = data.data() + currentVertexOffset;
+//             float u = 0.0f, v = 0.0f;
+            
+//             if(uvFormat.compType == CompType::Float && uvFormat.compByteWidth == 4) {     
+//                 const float *fuv = (const float *)uvPtr;     
+//                 u = fuv[0];     
+//                 v = fuv[1]; 
+//             } 
+//             else if(uvFormat.compType == CompType::Float && uvFormat.compByteWidth == 2) {     
+//                 const uint16_t *huv = (const uint16_t *)uvPtr;     
+//                 u = ConvertHalfToFloat(huv[0]);      
+//                 v = ConvertHalfToFloat(huv[1]); 
+//             }
+//             else if(uvFormat.compType == CompType::UNorm && uvFormat.compByteWidth == 2)
+//             {
+//                 const uint16_t *us = (const uint16_t *)uvPtr;
+//                 u = (float)us[0] / 65535.0f;
+//                 v = (float)us[1] / 65535.0f;
+//             }
+//             else if(uvFormat.compType == CompType::SNorm && uvFormat.compByteWidth == 2)
+//             {
+//                 const int16_t *ss = (const int16_t *)uvPtr;
+//                 u = (float)ss[0] / 32767.0f;
+//                 v = (float)ss[1] / 32767.0f;
+//             }
+//             else
+//             {
+//                 // Default float fallback
+//                 const float *fuv = (const float *)uvPtr;     
+//                 u = fuv[0];     
+//                 v = fuv[1]; 
+//             }
+
+//             uvStream << "vt " << u << " " << (1.0f - v) << "\n";             
+//         }         
+//     }
+// }
+
+// // Output everything
+// s << QLatin1String("=== DEBUG INFO ===\n") << debugOutput 
+//   << QLatin1String("\n=== UV OUTPUT ===\n") << uvOutput;
+// //got130
+
+
+
+                }
+
+
 
 //               s << "vt " << u_uu << " " << (1.0f - u_uv) << "\n";
 
@@ -7034,6 +7688,95 @@ mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
                 // so we skip normals for VSOut for now
             }
 
+            const PipeState &pipeState = m_Ctx.CurPipelineState();
+            bool isTriStrip = pipeState.GetPrimitiveTopology()==Topology::TriangleStrip;
+
+            if (isTriStrip)
+            {
+              // Write faces using triangle strip index buffer if available
+if(posvs.indexResourceId != ResourceId() && posvs.indexByteStride > 0)
+{
+    bytebuf idata = r->GetBufferData(posvs.indexResourceId,
+                                      posvs.indexByteOffset, 0);
+    uint32_t numIndices = (uint32_t)(idata.size() / posvs.indexByteStride);
+
+    // Triangle strip uses i += 1, ensuring every 3 consecutive indices make a triangle
+    for(uint32_t i = 0; i + 2 < numIndices; i++)
+    {
+        uint32_t i0, i1, i2;
+        if(posvs.indexByteStride == 2)
+        {
+            const uint16_t *idx = (const uint16_t *)idata.data();
+            i0 = idx[i]; i1 = idx[i+1]; i2 = idx[i+2];
+        }
+        else
+        {
+            const uint32_t *idx = (const uint32_t *)idata.data();
+            i0 = idx[i]; i1 = idx[i+1]; i2 = idx[i+2];
+        }
+
+        // Skip degenerate triangles in strips (where any two indices match)
+        if(i0 == i1 || i1 == i2 || i0 == i2)
+            continue;
+
+        // Correct winding order for odd triangles in a strip
+        if(i % 2 == 1)
+        {
+            std::swap(i1, i2);
+        }
+
+        int g0 = globalVertOffset + i0;
+        int g1 = globalVertOffset + i1;
+        int g2 = globalVertOffset + i2;
+
+        if (hasNormal)
+        {
+            s << "f " << g0 << "/" << g0 << "/" << g0 << " "
+                      << g1 << "/" << g1 << "/" << g1 << " "
+                      << g2 << "/" << g2 << "/" << g2 << "\n";
+        }
+        else
+        {
+            s << "f " << g0 << "/" << g0 << " "
+                      << g1 << "/" << g1 << " "
+                      << g2 << "/" << g2 << "\n";
+        }
+    }
+}
+else
+{
+    // If it's a non-indexed triangle strip without an index buffer
+    for(uint32_t i = 0; i + 2 < numVerts; i++)
+    {
+        uint32_t i0 = i, i1 = i + 1, i2 = i + 2;
+        if(i % 2 == 1)
+        {
+            std::swap(i1, i2);
+        }
+
+        int g0 = globalVertOffset + i0;
+        int g1 = globalVertOffset + i1;
+        int g2 = globalVertOffset + i2;
+
+        if (hasNormal)
+        {
+            s << "f " << g0 << "/" << g0 << "/" << g0 << " "
+                      << g1 << "/" << g1 << "/" << g1 << " "
+                      << g2 << "/" << g2 << "/" << g2 << "\n";
+        }
+        else
+        {
+            s << "f " << g0 << "/" << g0 << " "
+                      << g1 << "/" << g1 << " "
+                      << g2 << "/" << g2 << "\n";
+        }
+    }
+}
+            }
+            else
+            {
+              //trilist
+
             // Write faces using index buffer if available
             if(posvs.indexResourceId != ResourceId() && posvs.indexByteStride > 0)
             {
@@ -7095,6 +7838,7 @@ mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
                     }
                 }
             }
+          }
 
             globalVertOffset += numVerts;
         }

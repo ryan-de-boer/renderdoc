@@ -3465,14 +3465,20 @@ ProjectionGuess FindBestProjection(const MMatrix4f& WVP, float aspect, float far
     ProjectionGuess best = { 45.0f, 0.1f, FLT_MAX };
 
     // Search fov from 30 to 120, near plane from 0.05 to 1.0
-    for (float fov = 30.0f; fov <= 120.0f; fov += 2.0f) {
-        for (float near = 0.05f; near <= 1.0f; near += 0.1f) {
+     for (float fov = 30.0f; fov <= 120.0f; fov += 2.0f) {
+         for (float near = 0.05f; near <= 1.0f; near += 0.1f) 
+         //{
+//    for (float fov = 20.0f; fov <= 120.0f; fov += 1.0f) {
+      //  for (float near = 0.05f; near <= 1.0f; near += 0.1f)
+  //      float near = 0.1f;
+        {
             
             MMatrix4f P = GenerateProjection(fov, aspect, near, far);
             float err = CalculateCubeError(WVP, P);
             
             if (err < best.error) {
                 best = { fov, near, err };
+                std::cout << "BEST fov:" << fov << ", near:" << near << ", err:" <<err << "\n";
             }
         }
     }
@@ -3596,29 +3602,39 @@ const float* camMatF = m_Flycam->camera()->GetCamMatrix();
     //try different
 float sixteenByNine = 1.777f;
 float fourByThree = 1.333f;
+float vpWH = vpWidth/vpHeight;
 float one = 1.0f;
     // ProjectionGuess pg = FindBestProjection(camMat, vpWidth/vpHeight, FLT_MAX);
     // MMatrix4f mpg = MMatrix4f::Perspective(pg.fov, pg.near, FLT_MAX, vpWidth/vpHeight);
-    ProjectionGuess pg = FindBestProjection(camMat, sixteenByNine, FLT_MAX);
-    MMatrix4f mpg = MMatrix4f::Perspective(pg.fov, pg.near, FLT_MAX, sixteenByNine);
+
+    //BS3 should be fourByThree?
+     //ProjectionGuess pg = FindBestProjection(camMat, sixteenByNine, FLT_MAX);
+     //MMatrix4f mpg = MMatrix4f::Perspective(pg.fov, pg.near, FLT_MAX, sixteenByNine);
+     ProjectionGuess pg = FindBestProjection(camMat, vpWH, FLT_MAX);
+     MMatrix4f mpg = MMatrix4f::Perspective(pg.fov, pg.near, FLT_MAX, vpWH);
+
 
     MMatrix4f invProj = mpg.Inverse();
 
+    mv = camMat.Mul(invProj);  // This is the World-View matrix!
 
-    // 1. Get the View Matrix (your camMat) and invert it
-MMatrix4f invView = camMat.Inverse(); 
 
-// 2. Get the Projection Matrix and invert it
-//MMatrix4f invProj = guessProjInv; // Assuming this is already the inverse
+//     // 1. Get the View Matrix (your camMat) and invert it
+// MMatrix4f invView = camMat.Inverse(); 
 
-// 3. Multiply them in the correct order: InverseProjection * InverseView
-MMatrix4f invViewProj = invProj.Mul(invView); 
-mv = invViewProj;
+// // 2. Get the Projection Matrix and invert it
+// //MMatrix4f invProj = guessProjInv; // Assuming this is already the inverse
+
+// // 3. Multiply them in the correct order: InverseProjection * InverseView
+// MMatrix4f invViewProj = invProj.Mul(invView); 
+// mv = invViewProj;
+
+
 
 // Print the matrix to debug
-for(int i = 0; i < 16; ++i) {
-    printf("inViewProj m[%d] = %f\n", i, invViewProj[i]);
-}
+// for(int i = 0; i < 16; ++i) {
+//     printf("inViewProj m[%d] = %f\n", i, invViewProj[i]);
+// }
 
 // 4. Now apply this to your vertices
 //Vec4f worldPos = invViewProj.Transform(Vec4f(ndcPos, 1.0f));
