@@ -6153,7 +6153,10 @@ std::cout << "S_1 \n";
                   std::string hash = ShowVulkanShaderMD5HashNoBlock(m_Ctx);
 std::cout << "S_2 \n";
 
+bool hasSecond = false;
+bool bs3Normal = false;
 int findIndex = 0;    // Default to first texture.
+int findSecondIndex = 1; // Default to second texture.
 int magentaTextureIndex = -1;
 if (hash == "fs.ff2bb62d21f161f5ae327f65718e7c78")
 {
@@ -6187,6 +6190,17 @@ else if (hash == "fs.f278509a91a99f485b011d45258de3a8")
   //Zoria tree
   findIndex = 1; // FS1
   std::cout << "zoria tree \n";
+}
+else if (hash == "fs.015ce8bdffd4a613b2e0a48ac90788ed")
+{
+  //BS3 ground lm
+  hasSecond = true;
+  std::cout << "BS3 ground \n";
+}
+else if (hash == "fs.9665db9d4bd26a645fef9c4bbc1de5df")
+{
+  bs3Normal = true;
+  std::cout << "BS3 human normals \n";
 }
 std::cout << "S_3 " << hash << "\n";
 
@@ -6226,10 +6240,14 @@ else
   hasGeom = false;
 }
 
+QString meshFilename = lit("");
+std::string oMaterialName = "";
+
 if (hasGeom) //skip textures when no geom
 {
   int index = 0;
   ResourceId firstTexture;
+  ResourceId secondTexture;
   ResourceId magentaTexture;
   bool hasMagenta = false;
 
@@ -6251,6 +6269,10 @@ if (hasGeom) //skip textures when no geom
           magentaTexture = d.resource;
           hasMagenta = true;
         }
+        if (findSecondIndex == index)
+        {
+          secondTexture = d.resource;
+        }
         index++;
       }
     }
@@ -6258,6 +6280,7 @@ if (hasGeom) //skip textures when no geom
 std::cout << "S_4 \n";
 
 QString texFilename = filename.left(filename.length() - 4) + lit("_") +QString::number(eid) + lit(".png");
+QString texFilename2 = filename.left(filename.length() - 4) + lit("_") +QString::number(eid) + lit("_2.png");
 std::cout << "S_5 \n";
 
 
@@ -6439,6 +6462,28 @@ else
     std::cout << "Saved texture to " << texFilename.toStdString() << std::endl;
 }
 }
+
+if (hasSecond)
+{
+//
+ResourceId texId = secondTexture;
+
+TextureSave saveConfig = {};
+saveConfig.resourceId = texId;
+saveConfig.typeCast = CompType::Typeless;
+saveConfig.slice.sliceIndex = 0;
+saveConfig.mip = 0;
+saveConfig.channelExtract = -1;  // all channels
+saveConfig.comp.blackPoint = 0.0f;
+saveConfig.comp.whitePoint = 1.0f;
+saveConfig.alpha = AlphaMapping::Preserve;  // keep alpha
+
+saveConfig.destType = FileType::PNG;
+ResultDetails result = r->SaveTexture(saveConfig, texFilename2); 
+//
+}
+
+
 std::cout << "S_8 \n";
 
 //std::cout << "CrashDebug0.1"<< std::endl;
@@ -6457,7 +6502,8 @@ std::cout << "S_9 \n";
 
 // prevent materials being written
 
-            s << "o " << QFileInfo(texFilename).baseName() << "\n";
+            s << "o " << QFileInfo(texFilename).baseName() << "\n";            
+
             s << "# Hash: " << hash.c_str() << "\n";
     s << "mtllib " << QFileInfo(texFilename).baseName() << ".mtl\n";
     s << "usemtl material" << eid << "\n\n";
@@ -6479,7 +6525,66 @@ std::cout << "S_9 \n";
         m << "map_d " << QFileInfo(texFilename).baseName() << ".png\n";
         mtlFile.close();
     }
+
+    dirPath = QFileInfo(texFilename).absolutePath();
+    mtlFilename = dirPath + lit("/") + QFileInfo(texFilename).baseName() + lit(".material");
+    QString oMaterialName1 = QFileInfo(texFilename).baseName();
+    oMaterialName = oMaterialName1.toStdString();
+    QFile omtlFile(mtlFilename);
+    if(omtlFile.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QTextStream m(&omtlFile);
+        m << "// Hash: " << hash.c_str() << "\n";
+
+m << "material "<<QFileInfo(texFilename).baseName()<<"\n";
+m << "{\n";
+m << "    technique\n";
+m << "    {\n";
+m << "        pass\n";
+m << "        {\n";
+m << "//            ambient 0.5 0.5 0.5\n";
+m << "//            diffuse 1.0 1.0 1.0\n";
+m << "//            specular 0.1 0.1 0.1 10\n";
+m << "            lighting off\n";
+m << "\n";
+m << "            texture_unit\n";
+m << "            {\n";
+m << "                texture "<< QFileInfo(texFilename).baseName() << ".png\n";
+m << "//                scale 1.0 1.0\n";
+m << "            }\n";
+if (hasSecond)
+{
+m << "           texture_unit\n";
+m << "           {\n";
+m << "                tex_coord_set 1\n";
+m << "                texture "<< QFileInfo(texFilename).baseName() <<"_2.png\n";
+m << "\n";
+m << "                // This multiplies the pixels of Layer 2 with Layer 1\n";
+m << "                colour_op_ex modulate src_texture src_current\n";
+m << "            }\n";
+}
+m << "        }\n";
+m << "    }\n";
+m << "}\n";
+
+        omtlFile.close();
+    }
+  
+    
+        dirPath = QFileInfo(texFilename).absolutePath();
+    meshFilename = dirPath + lit("/") + QFileInfo(texFilename).baseName() + lit(".mesh.xml");
+    QFile meshFile(meshFilename);
+    if(!meshFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+      return;
+    }
+
+        QTextStream m(&meshFile);
+        m << "<!-- # Hash: " << hash.c_str() << "-->\n";
+        m << "<mesh>\n";
+        meshFile.close();
   }
+
+
 
 //std::cout<< "CrashDebug0.4"<< std::endl;
 
@@ -6765,11 +6870,35 @@ s << "# unproject=" << (int)posvs.unproject
 
             s << "# EID " << eid << " numVerts=" << numVerts << "\n";
 
+            // Re-open in Append mode
+            QFile meshFile(meshFilename);
+if(!meshFile.open(QIODevice::Append | QIODevice::Text)) {
+    return;
+}
+QTextStream m(&meshFile);
+
+hasNormal = hasNormal || bs3Normal;
+std::string strNormal = "false";
+if (hasNormal)
+{
+  strNormal = "true";
+}
+int texcoords = 1;
+if (hasSecond)
+{
+  texcoords = 2;
+}
+
+            m << "<sharedgeometry vertexcount=\"" << numVerts << "\">\n";
+            m << "<vertexbuffer positions=\"true\" normals=\""<<strNormal.c_str()<< "\" texture_coords=\""<<texcoords<<"\">\n";
+
             // Write vertices - unproject from clip space to world space
             // VSOut positions are in clip space (homogeneous)
             // We need to do perspective divide to get NDC, then unproject
             for(uint32_t i = 0; i < numVerts; i++)
             {
+              m << "<vertex>\n";
+
               const byte *vertexPtr = vdata.data() + posvs.vertexByteOffset + (i * posvs.vertexByteStride);
 //                const byte *ptr = vdata.data() + i * stride;
 //                const float *pos = (const float *)ptr;  // _sig32._child0 at offset 0, float4
@@ -6988,16 +7117,24 @@ bool isBS3 = true;
 if (isBS3)
 {
                s << "v " << -ox*0.5f << " " << oy*0.5f << " " << oz << "\n"; //blender fix
+
+               m << "<position x=\""<< -ox*0.5f <<"\" y=\""<<oy*0.5f<<"\" z=\""<<oz<<"\"/>\n";
 }
 else
 {
                s << "v " << ox*0.5f << " " << oy*0.5f << " " << oz << "\n"; //blender fix
+               m << "<position x=\""<< ox*0.5f <<"\" y=\""<<oy*0.5f<<"\" z=\""<<oz<<"\"/>\n";
 }
+
+ 
+
 
 
 //test org v / w
 //               s << "v " << pos[0]/pos[3] << " " << pos[1]/pos[3] << " " << pos[2]/pos[3] << "\n";
 
+
+hasNormal = hasNormal || bs3Normal;
 
               if (isBS3 && hasNormal) {
 
@@ -7014,6 +7151,9 @@ else
     float nz = withOffset[2];
 
                   s << "vn " << nx << " " << ny << " " << nz << "\n";
+
+                  m << "<normal x=\""<< nx <<"\" y=\""<<ny<<"\" z=\""<<nz<<"\"/>\n";
+
               }
                else if (hasNormal && i < untrans_normals_x.size()&& i < untrans_normals_y.size()&& i < untrans_normals_z.size())
                {
@@ -7025,6 +7165,11 @@ else
                {
                   s << "#uvn " << 0.0<< " " << 0.0 << " " << 0.0 << "\n"; //blender fix
                   s << "vn " << 0.0 << " " << 0.0 << " " << 0.0 << "\n"; //blender fix
+               }
+               else if (!hasNormal)
+               {
+                  s << "#No Normals\n";
+                  s << "vn " << 0.0 << " " << 1.0 << " " << 0.0 << "\n"; //blender fix
                }
 
                if (hasUV)
@@ -7084,9 +7229,23 @@ int vertexIndex = i;
          s << "# vt raw " << u << " " << v << "\n";
          s << "vt " << u << " " << (1.0f - v) << "\n";
 
+         m << "<!-- vt raw " << u << " " << v << "-->\n";
+         m << "<texcoord u=\""<< u <<"\" v=\""<<(v)<<"\"/>\n"; //don't negate ogre mesh, just negate obj
+
+         if (hasSecond) {
+    const float *uv2 = (const float *)(vertexPtr + 48);
+
+         m << "<!-- vt raw2 " << uv2[0] << " " << uv2[1]  << "-->\n";
+         m << "<texcoord u=\""<< uv2[0] <<"\" v=\""<<(uv2[1])<<"\"/>\n"; //don't negate ogre mesh, just negate obj
+         }
+
+
+
+
              //n
     //debugPrintVertexFloats(bytebuf& vdata, uint32_t stride, uint32_t numVerts, QTextStream& s)
-    //debugPrintVertexFloats(vdata, i, posvs.vertexByteStride, 1, s); //offset 112 is transformed normal!
+    //debugPrintVertexFloats(vdata, i, posvs.vertexByteStride, 1, m); //offset 112 is transformed normal!
+    //offset 48 is uv2
     //n
 
 
@@ -7686,7 +7845,18 @@ int vertexIndex = i;
                 // Normal at offset 16+16=32? check your VSOut layout
                 // _output1 at offset 32, float1 - might not be normal
                 // so we skip normals for VSOut for now
+
+              m << "</vertex>\n";
+
             }
+
+
+                    m << "</vertexbuffer>\n";
+    m << "</sharedgeometry>\n";
+    m << "<submeshes>\n";
+
+        m << "<submesh material=\"" << oMaterialName.c_str() << "\" usesharedvertices=\"true\">\n";
+
 
             const PipeState &pipeState = m_Ctx.CurPipelineState();
             bool isTriStrip = pipeState.GetPrimitiveTopology()==Topology::TriangleStrip;
@@ -7701,6 +7871,9 @@ if(posvs.indexResourceId != ResourceId() && posvs.indexByteStride > 0)
     uint32_t numIndices = (uint32_t)(idata.size() / posvs.indexByteStride);
 
     // Triangle strip uses i += 1, ensuring every 3 consecutive indices make a triangle
+    //Total Triangles = numIndices - 2
+    m << "<!-- triangle strip -->\n";
+        m << "<faces count=\""<<(numIndices - 2)<<"\">\n";
     for(uint32_t i = 0; i + 2 < numIndices; i++)
     {
         uint32_t i0, i1, i2;
@@ -7741,11 +7914,20 @@ if(posvs.indexResourceId != ResourceId() && posvs.indexByteStride > 0)
                       << g1 << "/" << g1 << " "
                       << g2 << "/" << g2 << "\n";
         }
+        m << "<face v1=\""<< i0 <<"\" v2=\""<<i1<<"\" v3=\""<< i2 <<"\"/>\n";
     }
+        m << "</faces>\n";
+        m << "</submesh>\n";
+        m << "</submeshes>\n";
+        m << "</mesh>\n";
+              
 }
 else
 {
     // If it's a non-indexed triangle strip without an index buffer
+    //Total Triangles = numVerts - 2
+    m << "<!-- non-indexed triangle strip without an index buffer -->\n";
+        m << "<faces count=\""<<(numVerts - 2)<<"\">\n";
     for(uint32_t i = 0; i + 2 < numVerts; i++)
     {
         uint32_t i0 = i, i1 = i + 1, i2 = i + 2;
@@ -7770,7 +7952,13 @@ else
                       << g1 << "/" << g1 << " "
                       << g2 << "/" << g2 << "\n";
         }
+        m << "<face v1=\""<< i0 <<"\" v2=\""<<i1<<"\" v3=\""<< i2 <<"\"/>\n";
     }
+
+            m << "</faces>\n";
+        m << "</submesh>\n";
+        m << "</submeshes>\n";
+        m << "</mesh>\n";
 }
             }
             else
@@ -7784,6 +7972,10 @@ else
                                                   posvs.indexByteOffset, 0);
                 uint32_t numIndices = (uint32_t)(idata.size() / posvs.indexByteStride);
 
+                //Total Triangles = numIndices / 3
+    m << "<!-- triangle list -->\n";
+
+        m << "<faces count=\""<<(numIndices / 3)<<"\">\n";
                 for(uint32_t i = 0; i + 2 < numIndices; i += 3)
                 {
                     uint32_t i0, i1, i2;
@@ -7813,11 +8005,20 @@ else
                               << g1 << "/" << g1 << " "
                               << g2 << "/" << g2 << "\n";
                     }
+                            m << "<face v1=\""<< i0 <<"\" v2=\""<<i1<<"\" v3=\""<< i2 <<"\"/>\n";
+
                 }
+                            m << "</faces>\n";
+        m << "</submesh>\n";
+        m << "</submeshes>\n";
+        m << "</mesh>\n";
             }
             else
             {
                 // no index buffer, sequential triangles
+                //Total Triangles = numVerts / 3
+    m << "<!-- triangle list sequential triangles -->\n";
+                 m << "<faces count=\""<<(numVerts / 3)<<"\">\n";
                 for(uint32_t i = 0; i + 2 < numVerts; i += 3)
                 {
                     int g0 = globalVertOffset + i;
@@ -7836,11 +8037,20 @@ else
                               << g1 << "/" << g1 << " "
                               << g2 << "/" << g2 << "\n";
                     }
+                    m << "<face v1=\""<< i <<"\" v2=\""<<(i+1)<<"\" v3=\""<< (i+2) <<"\"/>\n";
                 }
+
+                                        m << "</faces>\n";
+        m << "</submesh>\n";
+        m << "</submeshes>\n";
+        m << "</mesh>\n";
             }
+
           }
 
             globalVertOffset += numVerts;
+
+            meshFile.close();
         }
 
         // restore original EID
