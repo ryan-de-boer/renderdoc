@@ -64,10 +64,15 @@
 #include <cmath>
 #include "Windows/BufferViewer.h"
 #include "Windows/Dialogs/ProjectionGuessDialog.h"
+//#include <filesystem> // Requires C++17 or newer
 
 #include <iostream>
+#include <fstream>
 #include <chrono>
 #include <iomanip> // for std::setprecision
+
+#include "/home/ryan-de-boer/renderdoc_src/renderdoc/renderdoc/3rdparty/md5/md5.h"
+//#include "/home/ryan-de-boer/renderdoc_src/renderdoc/renderdoc/3rdparty/md5/md5.c"
 
 //#include <dlfcn.h> // For dlsym on Linux
 
@@ -106,6 +111,65 @@
 //     float* GetCustomMatrix();
 // }
 
+//namespace fs = std::filesystem;
+
+bool FileExists(const std::string& filename) {
+    std::ifstream file(filename);
+    return file.good(); // Returns true if the file exists and is accessible
+}
+
+// Helper function to read a file into memory
+std::vector<byte> ReadEntireFile(const std::string& filename) {
+    // Open in binary mode and position stream pointer at the end (ios::ate)
+    std::ifstream file(filename, std::ios::binary | std::ios::ate);
+    
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open file: " + filename);
+    }
+
+    // Get file size from the stream pointer position
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    // Allocate memory buffer
+    std::vector<byte> buffer(size);
+    
+    // Read contents into buffer
+    if (file.read(reinterpret_cast<char*>(buffer.data()), size)) {
+        return buffer;
+    }
+    
+    return {};
+}
+
+std::string HashFile(std::string const& filePath) {
+
+          // 1. Read the file into a standard byte vector
+        std::vector<byte> fileData = ReadEntireFile(filePath);
+
+        // 2. Wrap the vector pointer and size inside the rdcarray structure
+        rdcarray<byte> rawBytes(fileData.data(), fileData.size());
+
+
+              // 4. Initialize and run RenderDoc's internal public-domain MD5 context
+            MD5_CTX md5Context;
+            unsigned char digest[16]; // Allocated as a full 16-byte destination array
+            
+            MD5_Init(&md5Context);
+            MD5_Update(&md5Context, rawBytes.data(), (unsigned long)rawBytes.size());
+            MD5_Final(digest, &md5Context);
+
+            // 5. Convert the byte digest directly to a 32-character hex string
+            std::stringstream ss;
+            ss << "fs.";
+            for(int i = 0; i < 16; ++i)
+            {
+                ss << std::hex << std::setw(2) << std::setfill('0') << (int)digest[i];
+            }
+            std::string resultHash = ss.str();
+            return resultHash;
+
+}
 
 struct EventBrowserPersistentStorage : public CustomPersistentStorage
 {
@@ -5792,6 +5856,8 @@ void EventBrowser::exportObjRange()
   uint32_t startEID = m_SelectStartIndex.data(ROLE_SELECTED_EID).toUInt();
   uint32_t endEID = m_SelectEndIndex.data(ROLE_SELECTED_EID).toUInt();
 
+  std::map<std::string/*hash*/, std::string/*filePath*/> fileHashes;
+
 std::cout << "1 EXPORT RANGE TRIGGERED " << 
   startEID << "-" << endEID << std::endl;
 
@@ -6280,6 +6346,7 @@ if (hasGeom) //skip textures when no geom
 std::cout << "S_4 \n";
 
 QString texFilename = filename.left(filename.length() - 4) + lit("_") +QString::number(eid) + lit(".png");
+QString idFilename = filename.left(filename.length() - 4) + lit("_") +QString::number(eid) + lit(".png");
 QString texFilename2 = filename.left(filename.length() - 4) + lit("_") +QString::number(eid) + lit("_2.png");
 std::cout << "S_5 \n";
 
@@ -6483,6 +6550,66 @@ ResultDetails result = r->SaveTexture(saveConfig, texFilename2);
 //
 }
 
+    if (FileExists(texFilename.toStdString())) {
+        std::cout << "RenderDoc capture file verified on disk.\n";
+
+        std::string hashTexFilename = HashFile(texFilename.toStdString());
+
+//          std::map<std::string/*hash*/, std::string/*filePath*/> fileHashes;
+        auto it = fileHashes.find(hashTexFilename);
+        if (it!=fileHashes.end()) {
+          QFile::remove(texFilename);
+          texFilename = QString::fromStdString(it->second);
+        }
+        else {
+          fileHashes[hashTexFilename] = texFilename.toStdString();
+        }
+
+
+
+    } else {
+        std::cout << "Target file is missing.\n";
+    }
+    if (FileExists(texFilename2.toStdString())) {
+      std::cout << "RenderDoc capture file verified on disk.\n";
+
+        std::string hashTexFilename2 = HashFile(texFilename2.toStdString());
+
+//          std::map<std::string/*hash*/, std::string/*filePath*/> fileHashes;
+        auto it = fileHashes.find(hashTexFilename2);
+        if (it!=fileHashes.end()) {
+          QFile::remove(texFilename2);
+          texFilename2 = QString::fromStdString(it->second);
+        }
+        else {
+          fileHashes[hashTexFilename2] = texFilename2.toStdString();
+        }
+
+    } else {
+        std::cout << "Target file is missing.\n";
+    }
+
+
+
+// if(FileIO::exists(texFilename))
+// {
+//     // File exists!
+//     RDCDEBUG("File found at %s", texFilename.c_str());
+// }
+// else
+// {
+//     RDCDEBUG("File does not exist.");
+// }
+// if(FileIO::exists(texFilename2))
+// {
+//     // File exists!
+//     RDCDEBUG("File found at %s", texFilename2.c_str());
+// }
+// else
+// {
+//     RDCDEBUG("File does not exist.");
+// }
+
 
 std::cout << "S_8 \n";
 
@@ -6502,16 +6629,17 @@ std::cout << "S_9 \n";
 
 // prevent materials being written
 
-            s << "o " << QFileInfo(texFilename).baseName() << "\n";            
+            s << "o " << QFileInfo(idFilename).baseName() << "\n";            
+std::cout << "S_9_1 \n";
 
             s << "# Hash: " << hash.c_str() << "\n";
-    s << "mtllib " << QFileInfo(texFilename).baseName() << ".mtl\n";
+    s << "mtllib " << QFileInfo(idFilename).baseName() << ".mtl\n";
     s << "usemtl material" << eid << "\n\n";
 
 //std::cout << "CrashDebug0.3"<< std::endl;
     // Save MTL
-    QString dirPath = QFileInfo(texFilename).absolutePath();
-    QString mtlFilename = dirPath + lit("/") + QFileInfo(texFilename).baseName() + lit(".mtl");
+    QString dirPath = QFileInfo(idFilename).absolutePath();
+    QString mtlFilename = dirPath + lit("/") + QFileInfo(idFilename).baseName() + lit(".mtl");
     QFile mtlFile(mtlFilename);
     if(mtlFile.open(QIODevice::WriteOnly | QIODevice::Text))
     {
@@ -6526,9 +6654,9 @@ std::cout << "S_9 \n";
         mtlFile.close();
     }
 
-    dirPath = QFileInfo(texFilename).absolutePath();
-    mtlFilename = dirPath + lit("/") + QFileInfo(texFilename).baseName() + lit(".material");
-    QString oMaterialName1 = QFileInfo(texFilename).baseName();
+    dirPath = QFileInfo(idFilename).absolutePath();
+    mtlFilename = dirPath + lit("/") + QFileInfo(idFilename).baseName() + lit(".material");
+    QString oMaterialName1 = QFileInfo(idFilename).baseName();
     oMaterialName = oMaterialName1.toStdString();
     QFile omtlFile(mtlFilename);
     if(omtlFile.open(QIODevice::WriteOnly | QIODevice::Text))
@@ -6536,7 +6664,7 @@ std::cout << "S_9 \n";
         QTextStream m(&omtlFile);
         m << "// Hash: " << hash.c_str() << "\n";
 
-m << "material "<<QFileInfo(texFilename).baseName()<<"\n";
+m << "material "<<QFileInfo(idFilename).baseName()<<"\n";
 m << "{\n";
 m << "    technique\n";
 m << "    {\n";
@@ -6557,7 +6685,8 @@ if (hasSecond)
 m << "           texture_unit\n";
 m << "           {\n";
 m << "                tex_coord_set 1\n";
-m << "                texture "<< QFileInfo(texFilename).baseName() <<"_2.png\n";
+//m << "                texture "<< QFileInfo(texFilename).baseName() <<"_2.png\n";
+m << "                texture "<< QFileInfo(texFilename2).baseName() <<".png\n";
 m << "\n";
 m << "                // This multiplies the pixels of Layer 2 with Layer 1\n";
 m << "                colour_op_ex modulate src_texture src_current\n";
@@ -6571,8 +6700,8 @@ m << "}\n";
     }
   
     
-        dirPath = QFileInfo(texFilename).absolutePath();
-    meshFilename = dirPath + lit("/") + QFileInfo(texFilename).baseName() + lit(".mesh.xml");
+        dirPath = QFileInfo(idFilename).absolutePath();
+    meshFilename = dirPath + lit("/") + QFileInfo(idFilename).baseName() + lit(".mesh.xml");
     QFile meshFile(meshFilename);
     if(!meshFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
       return;
