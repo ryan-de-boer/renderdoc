@@ -6234,6 +6234,11 @@ else if(hash == "fs.affa68673501670b746b26c5e6f3b001")
   // SnowRunner ute body diffuse.
   findIndex = 15+1;    // FS15, but include VS0
 }
+else if (hash == "fs.4e5d2a71e903ddfda4c0606983e8cbc4")
+{
+  // SnowRunner F750 body diffuse.
+  findIndex = 15;
+}
 else if (hash == "fs.4d6a484458807bad1919a94ddf1afa19")
 {
   // CarX street tree.
@@ -7243,7 +7248,14 @@ mat4mul(customMatrix2, pos[0], pos[1], pos[2], pos[3], ox, oy, oz, ow);
 //mat4mul(ident, u_vx, u_vy, u_vz, 1.0f, ox, oy, oz, ow);
 //mat4mul(ident, u_nx, u_ny, u_nz, 1.0f, onx, ony, onz, onw);
 bool isBS3 = true;
-if (isBS3)
+bool isSnowRunner = true;
+if (isSnowRunner)
+{
+               s << "v " << -ox  << " " << oy << " " << oz << "\n"; //blender fix
+
+               m << "<position x=\""<< -ox <<"\" y=\""<<oy<<"\" z=\""<<oz<<"\"/>\n";
+}
+else if (isBS3)
 {
                s << "v " << -ox*0.5f << " " << oy*0.5f << " " << oz << "\n"; //blender fix
 

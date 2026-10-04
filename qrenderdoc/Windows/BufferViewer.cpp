@@ -3603,6 +3603,7 @@ const float* camMatF = m_Flycam->camera()->GetCamMatrix();
 float sixteenByNine = 1.777f;
 float fourByThree = 1.333f;
 float vpWH = vpWidth/vpHeight;
+//float vpWH = sixteenByNine;
 float one = 1.0f;
     // ProjectionGuess pg = FindBestProjection(camMat, vpWidth/vpHeight, FLT_MAX);
     // MMatrix4f mpg = MMatrix4f::Perspective(pg.fov, pg.near, FLT_MAX, vpWidth/vpHeight);
@@ -3617,6 +3618,88 @@ float one = 1.0f;
     MMatrix4f invProj = mpg.Inverse();
 
     mv = camMat.Mul(invProj);  // This is the World-View matrix!
+
+    //testing chatgpt fixes for SnowRunner, wait could it be aspect?
+    //chatgpt ran out of free file tokens, used google ai mode (gemini) instead
+
+    const float* camMatF2 = m_Flycam->camera()->GetCamMatrix();
+    for (int i = 0; i < 16; ++i)
+    printf("*****camMat[%d] = %.9f\n", i, camMatF2[i]);
+
+    printf("*****pg.fov = %.9f\n", pg.fov);
+    printf("*****pg.near = %.9f\n", pg.near);
+
+
+//clean view infinity
+//     MMatrix4f cleanView;
+
+// // Extract pure rotation/scale direction vectors 
+// // (Optionally normalize them if you want uniform scale, e.g. divide Row 1 by 3.487f)
+// cleanView[0] = 1.65601f;   cleanView[1] = -2.23616E-06f; cleanView[2] = 1.05157f;  cleanView[3] = 0.0f;
+// cleanView[4] = 0.02362f;   cleanView[5] = 3.48714f;      cleanView[6] = -0.03719f; cleanView[7] = 0.0f;
+// cleanView[8] = 0.00008f;   cleanView[9] = -1.81606E-06f; cleanView[10] = -0.00012f; cleanView[11] = 0.0f;
+
+// // The large values at the end of child2 and child3 are your spatial translations
+// cleanView[12] = -95.36568f; 
+// cleanView[13] = 843.37427f; 
+// cleanView[14] = 52.13808f; // pull from child5 position tracker
+// cleanView[15] = 1.0f;
+
+// // Try using just this matrix inversion 
+// mv = camMat.Mul(cleanView.Inverse());
+
+//Snow runner fix
+MMatrix4f gameVP;
+
+// Treat the float4s as COLUMNS instead of ROWS
+gameVP[0] = 1.65601f;   gameVP[1] = 0.02362f;   gameVP[2] = 0.00008f;   gameVP[3] = -0.53609f;
+gameVP[4] = -2.23616E-06f; gameVP[5] = 3.48714f;  gameVP[6] = -1.81606E-06f; gameVP[7] = 0.01271f;
+gameVP[8] = 1.05157f;   gameVP[9] = -0.03719f;  gameVP[10] = -0.00012f;  gameVP[11] = 0.84407f;
+gameVP[12] = -95.36568f; gameVP[13] = 843.37427f; gameVP[14] = 0.49262f;  gameVP[15] = 52.13808f;
+
+MMatrix4f invGameVP = gameVP.Inverse();
+mv = camMat.Mul(invGameVP);
+//Snow runner fix
+
+
+//     // 1. Build the true game View-Projection matrix from cb1
+// MMatrix4f gameVP;
+
+// // Row 0 (_child2)
+// gameVP[0] =  1.65601f;  gameVP[1] = -2.23616E-06f; gameVP[2] =  1.05157f;  gameVP[3] = -95.36568f;
+// // Row 1 (_child3)
+// gameVP[4] =  0.02362f;  gameVP[5] =  3.48714f;     gameVP[6] = -0.03719f;  gameVP[7] =  843.37427f;
+// // Row 2 (_child4)
+// gameVP[8] =  0.00008f;  gameVP[9] = -1.81606E-06f; gameVP[10] = -0.00012f; gameVP[11] =  0.49262f;
+// // Row 3 (_child5)
+// gameVP[12] = -0.53609f; gameVP[13] =  0.01271f;    gameVP[14] =  0.84407f; gameVP[15] =  52.13808f;
+
+// // 2. Invert it to go from Clip Space -> World Space
+// MMatrix4f invGameVP = gameVP.Inverse();
+
+// // 3. Chain it into RenderDoc's active flycam setup to render properly
+// //mv = targetDisplayCam.Mul(invGameVP);
+// mv = camMat.Mul(invGameVP);
+
+
+
+    //mv = camMat; //test1 very squashed (flat)
+    //mv = camMat.Mul(invProj); //test2 squashed
+    //mv = camMat.Transpose().Mul(invProj); //test3 still squashed
+
+//     const float aspect1 = vpWidth / vpHeight;
+
+// MMatrix4f proj1 =
+//     MMatrix4f::ReversePerspective(
+//         90.0f,                  // deliberately arbitrary initially
+//         0.1f,
+//         aspect1
+//     );
+
+// mv = camMat.Mul(proj1.Inverse());
+    //END testing
+
+
 
 
 //     // 1. Get the View Matrix (your camMat) and invert it
@@ -9166,20 +9249,35 @@ positionCache.reserve(model->rowCount());
           //   s << "\n";
           // }
 
-          s << "v ";
 // read x, y, z
 float vx = model->data(model->index(row, 2), Qt::DisplayRole).toString().trimmed().toFloat();
 float vy = model->data(model->index(row, 3), Qt::DisplayRole).toString().trimmed().toFloat();
 float vz = model->data(model->index(row, 4), Qt::DisplayRole).toString().trimmed().toFloat();
 
 bool isSnowRunner = true;
-if (isSnowRunner)
+bool isAC = true;
+if (isAC)
 {
+s << "#is_ac\n";
+
+vx = ((vx/32767.0f)*0.5f)+0.5f;
+vy = ((vy/32767.0f)*0.5f)+0.5f;
+vz = ((vz/32767.0f)*0.5f)+0.5f;
+
+          s << "v ";
+s << vx << " " << vy << " " << vz << "\n";
+}
+else if (isSnowRunner)
+{
+s << "#is_snow\n";
+          s << "v ";
 s << -vx << " " << vy << " " << vz << "\n";
 }
 else
 {
+s << "#swap\n";
 // swap Y and Z, negate X (coordinate system conversion)
+          s << "v ";
 s << -vx << " " << vz << " " << vy << "\n";
 }
 
@@ -9195,12 +9293,19 @@ s << -vx << " " << vz << " " << vy << "\n";
           for(int row = 0; row < model->rowCount(); row++)
           {
 
-            
+            if (normalColStart-1)
+            {
+s << "vn 0 1 0\n";
+            }
+            else
+            {
 float nx = model->data(model->index(row, normalColStart),   Qt::DisplayRole).toString().trimmed().toFloat();
 float ny = model->data(model->index(row, normalColStart+1), Qt::DisplayRole).toString().trimmed().toFloat();
 float nz = model->data(model->index(row, normalColStart+2), Qt::DisplayRole).toString().trimmed().toFloat();
 // same transform as position
 s << "vn " << -nx << " " << nz << " " << ny << "\n";
+            }
+            
 
             // s << "vn ";
             // for(int col = normalColStart; col <= normalColStart+2; col++)
