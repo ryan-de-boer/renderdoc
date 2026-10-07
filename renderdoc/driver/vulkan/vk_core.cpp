@@ -4766,12 +4766,12 @@ bool WrappedVulkan::ProcessChunk(ReadSerialiser &ser, VulkanChunk chunk)
       return Serialise_vkCmdBindVertexBuffers2(ser, VK_NULL_HANDLE, 0, 0, NULL, NULL, NULL, NULL);
     case VulkanChunk::vkCmdSetDepthTestEnable:
     {
-      std::cout << "DEBUG vkCmdSetDepthTestEnable ProcessChunk: A - "<< (uint32_t)chunk <<"\n";
+//      std::cout << "DEBUG vkCmdSetDepthTestEnable ProcessChunk: A - "<< (uint32_t)chunk <<"\n";
       return Serialise_vkCmdSetDepthTestEnable(ser, VK_NULL_HANDLE, VK_FALSE);
     }
     case VulkanChunk::vkCmdSetDepthWriteEnable:
     {
-      std::cout << "DEBUG vkCmdSetDepthWriteEnable ProcessChunk: A - "<< (uint32_t)chunk <<"\n";
+//      std::cout << "DEBUG vkCmdSetDepthWriteEnable ProcessChunk: A - "<< (uint32_t)chunk <<"\n";
       return Serialise_vkCmdSetDepthWriteEnable(ser, VK_NULL_HANDLE, VK_FALSE);
     }
     case VulkanChunk::vkCmdSetDepthCompareOp:

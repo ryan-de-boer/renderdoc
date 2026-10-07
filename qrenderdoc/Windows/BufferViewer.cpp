@@ -8334,7 +8334,7 @@ std::string ShowVulkanShaderMD5HashGENERATENoBlock(ICaptureContext &ctx)
 std::string ShowVulkanShaderMD5HashNoBlock(ICaptureContext &ctx)
 {
       std::string resultHash = "";
-std::cout << "M_1 \n";
+//std::cout << "M_1 \n";
 
     //   // RenderDoc UI work runs on a separate thread from replay loop tasks.
     // // BlockInvoke forces a lambda to execute safely on the core replay thread.
@@ -8345,15 +8345,15 @@ std::cout << "M_1 \n";
 //    IReplayController *controller = ctx.Replay().GetCurrentController();
 //    if (!controller) return resultHash;
 
-std::cout << "M_2 \n";
+//std::cout << "M_2 \n";
 
     // 1. Get the current unified pipeline state interface
     const PipeState &pipeState = ctx.CurPipelineState();
-std::cout << "M_3 \n";
+//std::cout << "M_3 \n";
 
     // 2. Retrieve the shader reflection data for the Pixel/Fragment stage
     const ShaderReflection* shaderReflection = pipeState.GetShaderReflection(ShaderStage::Pixel);
-std::cout << "M_4 \n";
+//std::cout << "M_4 \n";
 
     if (shaderReflection != nullptr)
     {
@@ -8389,13 +8389,13 @@ std::cout << "M_4 \n";
         resultHash = "Error: No fragment shader bound";
     }
 
-std::cout << "M_6 \n";
+//std::cout << "M_6 \n";
   if (resultHash=="Hash Not Found")
   {
-std::cout << "M_7 \n";
+//std::cout << "M_7 \n";
     return ShowVulkanShaderMD5HashGENERATENoBlock(ctx);
   }
-std::cout << "M_8 \n";
+//std::cout << "M_8 \n";
 
   return resultHash;
 }

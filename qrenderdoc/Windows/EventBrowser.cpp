@@ -6214,10 +6214,10 @@ uint32_t totalEvents = endEID - startEID + 1;
 const PipeState &state = m_Ctx.CurPipelineState();
 //std::cout << "Sav2 \n";
 
-std::cout << "S_1 \n";
+//std::cout << "S_1 \n";
 
                   std::string hash = ShowVulkanShaderMD5HashNoBlock(m_Ctx);
-std::cout << "S_2 \n";
+//std::cout << "S_2 \n";
 
 bool hasSecond = false;
 bool bs3Normal = false;
@@ -6238,6 +6238,35 @@ else if (hash == "fs.4e5d2a71e903ddfda4c0606983e8cbc4")
 {
   // SnowRunner F750 body diffuse.
   findIndex = 15;
+}
+else if (hash == "fs.da8f4f2de820705243a33241982edbe5"
+      || hash == "fs.d347dc51fcc90627476a421a439c6e54")
+{
+  // SnowRunner Merc,International body diffuse.
+  findIndex = 15+1;    // FS15, but include VS0
+}
+else if (hash == "fs.370f684a18c3f45ebdefd95e6b1bab95"
+      || hash == "fs.a0b4c4ee41a58739bcc77f61d8e4720e"
+      || hash == "fs.1ab5bebbaf70899fe102b987efdb2b11")
+{
+  // SnowRunner Merc,International,F750 windows diffuse.
+  findIndex = 15+1;    // FS15, but include VS0
+}
+else if (hash == "fs.8b6f14955b3d8f617f1aa09c5f5978ef")
+{
+  // SnowRunner Merc grill diffuse.
+  findIndex = 15+1;    // FS15, but include VS0
+}
+else if (hash == "fs.4de80daaf24612fbd189629a37659dd9"
+      || hash == "fs.8613fd4dfa72144bc7970d47dafb48f7")
+{
+  // SnowRunner Merc,International tires.
+  findIndex = 12;
+}
+else if (hash == "fs.108ecc52eca5bb1ddcb91192ad393e3f")
+{
+  // SnowRunner F750 tires.
+  findIndex = 13;
 }
 else if (hash == "fs.4d6a484458807bad1919a94ddf1afa19")
 {
@@ -6273,7 +6302,7 @@ else if (hash == "fs.9665db9d4bd26a645fef9c4bbc1de5df")
   bs3Normal = true;
   std::cout << "BS3 human normals \n";
 }
-std::cout << "S_3 " << hash << "\n";
+//std::cout << "S_3 " << hash << "\n";
 
 
 bool hasGeom = true;
@@ -6348,12 +6377,12 @@ if (hasGeom) //skip textures when no geom
       }
     }
   }
-std::cout << "S_4 \n";
+//std::cout << "S_4 \n";
 
 QString texFilename = filename.left(filename.length() - 4) + lit("_") +QString::number(eid) + lit(".png");
 QString idFilename = filename.left(filename.length() - 4) + lit("_") +QString::number(eid) + lit(".png");
 QString texFilename2 = filename.left(filename.length() - 4) + lit("_") +QString::number(eid) + lit("_2.png");
-std::cout << "S_5 \n";
+//std::cout << "S_5 \n";
 
 
     if (hasMagenta && magentaTexture != ResourceId())
@@ -6487,7 +6516,7 @@ ResultDetails result = {ResultCode::Succeeded};
 }
 else
 {
-std::cout << "S_7 \n";
+//std::cout << "S_7 \n";
 
 // For Vulkan/DX12 (Bindless or Descriptor Sets)
 const rdcarray<UsedDescriptor> &resources = state.GetReadOnlyResources(ShaderStage::Pixel);
@@ -6616,7 +6645,7 @@ ResultDetails result = r->SaveTexture(saveConfig, texFilename2);
 // }
 
 
-std::cout << "S_8 \n";
+//std::cout << "S_8 \n";
 
 //std::cout << "CrashDebug0.1"<< std::endl;
                   std::string temp = m_Ctx.GetCaptureFilename().c_str();
@@ -6630,12 +6659,12 @@ brightenTexture(texFilename, texFilename);
 //std::cout << "CrashDebug0.2"<< std::endl;
         //SaveTexture
 
-std::cout << "S_9 \n";
+//std::cout << "S_9 \n";
 
 // prevent materials being written
 
             s << "o " << QFileInfo(idFilename).baseName() << "\n";            
-std::cout << "S_9_1 \n";
+//std::cout << "S_9_1 \n";
 
             s << "# Hash: " << hash.c_str() << "\n";
     s << "mtllib " << QFileInfo(idFilename).baseName() << ".mtl\n";
