@@ -6144,6 +6144,14 @@ uint32_t totalEvents = endEID - startEID + 1;
             s << f[i] << " ";
         s << "\n";
     }
+    if(rawData.size() >= 30)
+    {
+        const float *f = (const float *)rawData.data();
+        s << "# raw first 30 floats: ";
+        for(int i = 0; i < 30; i++)
+            s << f[i] << " ";
+        s << "\n";
+    }
 } 
 
 
@@ -7350,9 +7358,47 @@ hasNormal = hasNormal || bs3Normal;
 
 //               s << "vn " << onx << " " << ony << " " << onz << "\n"; //blender fix
 
+bool is007 = uvColStart==22;
 
+if (is007)
+{
+
+                            // Calculate UV offset - try to find Texcoord0 attribute
+        uint32_t uvOffset = 16; // Default
+        const PipeState &pipeState = m_Ctx.CurPipelineState();
+        auto vertexInputs = pipeState.GetVertexInputs();
+        for(const auto &attr : vertexInputs)
+        {
+            QString name = QString::fromLatin1(attr.name.c_str());
+            if(name.contains(QLatin1String("TEXCOORD"), Qt::CaseInsensitive))
+            {
+                uvOffset = attr.byteOffset;
+                break;
+            }
+        }
+        uvOffset+=8;
+//        uvOffset = 31;
+
+         // Get UV pointer using the SAME vertexIndex (not the loop variable i)
+        
+int vertexIndex = i;
+ const byte *vertexPtr = vdata.data() + posvs.vertexByteOffset + (vertexIndex * posvs.vertexByteStride);
+
+    // UV is at offset 32-39 (2 floats: U at 32, V at 36)
+    const float *uvU = (const float *)(vertexPtr + uvOffset);
+    const float *uvV = (const float *)(vertexPtr + uvOffset+4);
+    
+    float u = uvU[0];
+    float v = uvV[0];
+
+         s << "# vt raw (007) " << u << " " << v << "\n";
+         s << "vt " << u << " " << (1.0f - v) << "\n";
+
+
+
+}
 //                 // UV at offset 16 (_output0, float4, first 2 floats are UV)
-                if(!isBS3 && stride >= 24)
+                else if(!isBS3 && stride >= 24)
                 {
 //                    const float *uv = (const float *)(ptr + 16);
                     const float *uv = (const float *)(vertexPtr + 16);

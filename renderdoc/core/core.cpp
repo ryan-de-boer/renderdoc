@@ -1380,7 +1380,7 @@ rdcstr RenderDoc::GetOverlayText(RDCDriver driver, DeviceOwnedWindow devWnd, uin
   while(overlayText.length() < 8)
     overlayText.push_back(' ');
 
-  overlayText = "Capturing " + overlayText;
+  overlayText = "RDB Capturing " + overlayText;
 
   if(numWindows > 1)
   {

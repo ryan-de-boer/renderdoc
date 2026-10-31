@@ -8812,6 +8812,7 @@ void BufferViewer::exportOBJ(const BufferExport &params)
 TextureSave saveConfig = {};
 saveConfig.resourceId = m_Config.textureId;
 
+bool is007glob = false;
 int findIndex = 0;    // Default to first texture.
 int magentaTextureIndex = -1;
 if (hash == "fs.ff2bb62d21f161f5ae327f65718e7c78")
@@ -8829,6 +8830,18 @@ else if (hash == "fs.4d6a484458807bad1919a94ddf1afa19")
   // CarX street tree.
   findIndex = 10;    // FS10
   magentaTextureIndex = 11;
+}
+else if (hash == "fs.09cd60fbf66a72f970938364a3672ddb")
+{
+  // 007 tree leaves.
+  findIndex = 1;
+  is007glob = true;
+}
+else if (hash == "fs.2d2339669593988c5272f61a6c2c7e4c")
+{
+  // 007 trunk.
+  findIndex = 1;
+  is007glob = true;
 }
 
   int index = 0;
@@ -9113,6 +9126,7 @@ if(mtlFile.open(QIODevice::WriteOnly | QIODevice::Text))
 //qDebug() << "CrashDebug4";
         // Find first float2 column (has .x and .y but no .z)
 int uvColStart = -1;
+int posColStart007 = -1;
 for(int i = 0; i < model->columnCount() - 1; i++)
 {
     QString colName = model->headerData(i, Qt::Horizontal, Qt::DisplayRole).toString();
@@ -9136,6 +9150,22 @@ for(int i = 0; i < model->columnCount() - 1; i++)
         uvColStart = i;
         break;
      }
+    if (colName==lit("TEXCOORDS.x")) //007?
+     {
+        uvColStart = i;
+        break;
+     }
+         if (colName==lit("TEXCOORDS0_OBJID_TEXBLENDFACTOR.x")) //007?
+     {
+        uvColStart = i;
+        break;
+     }
+    if (colName==lit("POSITION.x")) //007?
+     {
+        posColStart007 = i;
+        //cant do break here, still need texcoord
+     }
+     
 //qDebug() << "CrashDebug5";
 
  if(colName.endsWith(lit(".x")) && nextColName.endsWith(lit(".y")))
@@ -9187,6 +9217,11 @@ for(int i = posColStart + 3; i < model->columnCount() - 2; i++) // skip position
             normalColStart = i;
             break;
         }
+    }
+    if (colName==lit("NORMAL.x")) //007?
+    {
+        normalColStart = i;
+        break;
     }
 }
 s << "# Normal col start=" << normalColStart << "\n";
@@ -9250,13 +9285,28 @@ positionCache.reserve(model->rowCount());
           // }
 
 // read x, y, z
+
 float vx = model->data(model->index(row, 2), Qt::DisplayRole).toString().trimmed().toFloat();
 float vy = model->data(model->index(row, 3), Qt::DisplayRole).toString().trimmed().toFloat();
 float vz = model->data(model->index(row, 4), Qt::DisplayRole).toString().trimmed().toFloat();
 
+if (is007glob)
+{
+ vx = model->data(model->index(row, posColStart007+0), Qt::DisplayRole).toString().trimmed().toFloat();
+ vy = model->data(model->index(row, posColStart007+1), Qt::DisplayRole).toString().trimmed().toFloat();
+ vz = model->data(model->index(row, posColStart007+2), Qt::DisplayRole).toString().trimmed().toFloat();
+}
+
+
 bool isSnowRunner = true;
-bool isAC = true;
-if (isAC)
+bool isAC = false;
+if (is007glob)
+{
+  s << "#is_007\n";
+  s << "v ";
+  s << vx << " " << vy << " " << vz << "\n";
+}
+else if (isAC)
 {
 s << "#is_ac\n";
 
@@ -9293,9 +9343,17 @@ s << -vx << " " << vz << " " << vy << "\n";
           for(int row = 0; row < model->rowCount(); row++)
           {
 
-            if (normalColStart-1)
+            if (normalColStart==-1)
             {
 s << "vn 0 1 0\n";
+            }
+            else if (is007glob)
+            {
+float nx = model->data(model->index(row, normalColStart),   Qt::DisplayRole).toString().trimmed().toFloat();
+float ny = model->data(model->index(row, normalColStart+1), Qt::DisplayRole).toString().trimmed().toFloat();
+float nz = model->data(model->index(row, normalColStart+2), Qt::DisplayRole).toString().trimmed().toFloat();
+// same transform as position
+s << "vn " << nx << " " << ny << " " << nz << "\n";
             }
             else
             {
@@ -9340,7 +9398,14 @@ float tu = model->data(model->index(row, uvColStart),   Qt::DisplayRole).toStrin
 float tv = model->data(model->index(row, uvColStart+1), Qt::DisplayRole).toString().trimmed().toFloat();
 // flip V
 s << "# vt_org " << tu << " " << tv << "\n";
+if (is007glob)
+{
 s << "vt " << tu << " " << (1.0f-tv) << "\n";
+}
+else
+{
+s << "vt " << tu << " " << (1.0f-tv) << "\n";
+}
 //s << "vt " << tu << " " << tv << "\n";
 
 
