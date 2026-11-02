@@ -326,46 +326,46 @@ void WrappedVulkan::vkCmdDrawIndexed(VkCommandBuffer commandBuffer, uint32_t ind
     SCOPED_DBG_SINK();
 
 
-      // 1. ALWAYS execute and record the draw call so the pipeline stays perfect!
-    ObjDisp(commandBuffer)->CmdDrawIndexed(Unwrap(commandBuffer), indexCount, instanceCount, 
-                                           firstIndex, vertexOffset, firstInstance);
+    //   // 1. ALWAYS execute and record the draw call so the pipeline stays perfect!
+    // ObjDisp(commandBuffer)->CmdDrawIndexed(Unwrap(commandBuffer), indexCount, instanceCount, 
+    //                                        firstIndex, vertexOffset, firstInstance);
 
-     // 2. Look for your exact leaf or trunk draw calls
-    if ((indexCount == 11592 && instanceCount == 6) || (indexCount == 1566 && instanceCount == 6))
-    {
-        // Extract the current Vulkan graphics pipeline state inside RenderDoc
-        VulkanRenderState &state = m_BakedCmdBufferInfo[GetResID(commandBuffer)].state;
+    //  // 2. Look for your exact leaf or trunk draw calls
+    // if ((indexCount == 11592 && instanceCount == 6) || (indexCount == 1566 && instanceCount == 6))
+    // {
+    //     // Extract the current Vulkan graphics pipeline state inside RenderDoc
+    //     VulkanRenderState &state = m_BakedCmdBufferInfo[GetResID(commandBuffer)].state;
         
-        // Loop through all descriptor sets currently bound to the graphics pipeline
-        for(size_t i = 0; i < state.graphics.descSets.size(); i++)
-        {
-            // Extract the real ResourceId out of the DescriptorAndOffsets wrapper object
-            ResourceId descSetId = state.graphics.descSets[i].descSet;
-            if(descSetId == ResourceId()) continue;
+    //     // Loop through all descriptor sets currently bound to the graphics pipeline
+    //     for(size_t i = 0; i < state.graphics.descSets.size(); i++)
+    //     {
+    //         // Extract the real ResourceId out of the DescriptorAndOffsets wrapper object
+    //         ResourceId descSetId = state.graphics.descSets[i].descSet;
+    //         if(descSetId == ResourceId()) continue;
 
-            // Access RenderDoc's tracking block for this descriptor set configuration
-            const auto &setTrack = m_DescriptorSetState[descSetId];
+    //         // Access RenderDoc's tracking block for this descriptor set configuration
+    //         const auto &setTrack = m_DescriptorSetState[descSetId];
             
-            // Safety check to ensure the array has descriptor bindings allocated
-            if (!setTrack.data.binds.empty())
-            {
-                // Loop through all descriptor elements inside the rdcarray safely
-                for(size_t s = 0; s < setTrack.data.binds.size(); s++)
-                {
-                    // Indexing the rdcarray gives us the DescriptorSetSlot pointer
-                    const DescriptorSetSlot *slot = setTrack.data.binds[s];
+    //         // Safety check to ensure the array has descriptor bindings allocated
+    //         if (!setTrack.data.binds.empty())
+    //         {
+    //             // Loop through all descriptor elements inside the rdcarray safely
+    //             for(size_t s = 0; s < setTrack.data.binds.size(); s++)
+    //             {
+    //                 // Indexing the rdcarray gives us the DescriptorSetSlot pointer
+    //                 const DescriptorSetSlot *slot = setTrack.data.binds[s];
                     
-                    if(slot != NULL && slot->resource != ResourceId())
-                    {
-                        // Found a texture resource bound to your tree draw calls! Tag it as safe.
-                        safeTreeTextureIds.insert(slot->resource);
-                    }
-                }
-            }
-        }
-    }
+    //                 if(slot != NULL && slot->resource != ResourceId())
+    //                 {
+    //                     // Found a texture resource bound to your tree draw calls! Tag it as safe.
+    //                     safeTreeTextureIds.insert(slot->resource);
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
 
-    
+
 //  SCOPED_DBG_SINK();
 
   SERIALISE_TIME_CALL(ObjDisp(commandBuffer)
