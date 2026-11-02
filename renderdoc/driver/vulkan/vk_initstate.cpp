@@ -61,6 +61,9 @@ void WrappedVulkan::End_PrepareInitialBatch()
   m_PrepareInitStateBatching = false;
 }
 
+#include <set>
+extern std::set<ResourceId> safeTreeTextureIds;
+
 bool WrappedVulkan::Prepare_InitialState(WrappedVkRes *res)
 {
   ResourceId id = GetResourceManager()->GetID(res);
@@ -331,6 +334,32 @@ bool WrappedVulkan::Prepare_InitialState(WrappedVkRes *res)
         }
       }
     }
+
+    // =========================================================================
+    // HACK START: TRUNCATE NON-TREE ULTRA TEXTURES TO PROTECT SYSTEM RAM
+    // =========================================================================
+    if (imageInfo.extent.width > 2048)
+    {
+      // Check if this specific Image Resource ID is missing from our safe tracking list
+      if (safeTreeTextureIds.find(id) == safeTreeTextureIds.end())
+      {
+        // Change the allocation size parameters inside the creation block 
+        // to target a safe 1x1 pixel footprint allocation
+        bufInfo.size = 4; // 4 bytes for a single 1x1 RGBA pixel stub
+        
+        // Mutate the imageInfo copy metadata so the loop further down 
+        // doesn't attempt to execute a multi-megabyte vkCmdCopyImageToBuffer
+        ImageInfo &mutableImageInfo = const_cast<ImageInfo&>(imageInfo);
+        mutableImageInfo.extent.width = 1;
+        mutableImageInfo.extent.height = 1;
+        mutableImageInfo.extent.depth = 1;
+        mutableImageInfo.levelCount = 1;
+      }
+    }
+    // =========================================================================
+    // HACK END
+    // =========================================================================
+
 
     // since this happens during capture, we don't want to start serialising extra buffer creates,
     // leave this buffer as unwrapped
